@@ -1,0 +1,102 @@
+Keywords:
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT",
+   "SHOULD", "SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this
+   document are to be interpreted as described in RFC 2119 [34].
+
+MUST/required --> compulsory
+should/recommended --> necessary but can be excluded
+may --> optional
+
+Cache:
+
+cache-----> explicit expiration time
+|
+|---------> heuristic expiration time
+
+cache --------> fresh(not expired)
+    |
+    |------->stale
+
+HTTP url:
+
+HTTP/1.1 defines the sequence CR LF as the end-of-line marker for all
+   protocol elements except the entity-body 
+
+ http_URL = "http:" "//" host [ ":" port ] [ abs_path [ "?" query ]]
+
+ A port that is empty or not given is equivalent to the default
+        port for that URI-reference;
+
+        - Comparisons of host names MUST be case-insensitive;
+
+        - Comparisons of scheme names MUST be case-insensitive;
+
+        - An empty abs_path is equivalent to an abs_path of "/"ssssss
+
+Request:
+
+Request-Line   = Method SP Request-URI SP HTTP-Version CRLF
+
+An  origin server SHOULD return the status code 405 (Method Not Allowed)
+   if the method is known by the origin server but not allowed for the
+   requested resource, and 501 (Not Implemented) if the method is
+   unrecognized or not implemented by the origin server. The methods GET
+   and HEAD MUST be supported by all general-purpose servers. 
+
+Request-URI:
+
+Request-URI    = "*" | absoluteURI | abs_path | authority
+
+
+ An origin server that does differentiate resources based on the host
+   requested (sometimes referred to as virtual hosts or vanity host
+   names) MUST use the following rules for determining the requested
+   resource on an HTTP/1.1 request:
+
+   1. If Request-URI is an absoluteURI, the host is part of the
+     Request-URI. Any Host header field value in the request MUST be
+     ignored.
+
+   2. If the Request-URI is not an absoluteURI, and the request includes
+     a Host header field, the host is determined by the Host header
+     field value.
+
+   3. If the host as determined by rule 1 or 2 is not a valid host on
+     the server, the response MUST be a 400 (Bad Request) error message.
+
+
+
+Status codes:
+
+1xx: Informational - Request received, continuing process
+
+- 2xx: Success - The action was successfully received,
+understood, and accepted
+
+- 3xx: Redirection - Further action must be taken in order to
+        complete the request
+
+ - 4xx: Client Error - The request contains bad syntax or cannot
+        be fulfilled
+
+ - 5xx: Server Error - The server failed to fulfill an apparently
+        valid request
+
+Timeout Persistent connections:
+
+   Servers will usually have some time-out value beyond which they will
+   no longer maintain an inactive connection. Proxy servers might make
+   this a higher value since it is likely that the client will be making
+   more connections through the same server. The use of persistent
+   connections places no requirements on the length (or existence) of
+   this time-out for either the client or the server.
+
+Negotiation
+Server-driven Negotiation
+Agent-driven Negotiation
+
+
+Doubts:
+1) What is meaning of * in Request-URI
+2) how are file stored in server
