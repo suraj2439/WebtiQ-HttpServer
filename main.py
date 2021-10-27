@@ -1,5 +1,9 @@
 import socket
 from _thread import *
+import utility
+from urllib.parse import urlparse
+import os
+
 
 SERVER_PORT = 8001
 MAX_CONN = 100
@@ -7,34 +11,43 @@ MAX_REQ = 50
 MAX_URI_LENGTH = 500
 MAX_HEADER_LENGTH = 500
 SUPPORTED_METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD"]
+DEFAULT_DIR_PATH = ""
 
 req_count = 0
 
-def can_server_handle_req():
-    if(req_count < MAX_REQ):
+def isError(data, errorType):
+    if(errorType == "req_too_long"):
+        if(data < MAX_REQ):
+            return False
         return True
-    return False
-
-def can_server_handle_uri(uri_len):
-    if uri_len < MAX_URI_LENGTH:
+    elif errorType == "uri_too_long":
+        if data < MAX_URI_LENGTH:
+            return False
         return True
-    return False
-
-def can_server_handle_method(method):
-    if(method in SUPPORTED_METHODS):
+    elif errorType == "method_not_implemented":
+        if(data in SUPPORTED_METHODS):
+            return False
         return True
-    return False
-
-def can_server_handle_header(header_len):
-    if(header_len < MAX_HEADER_LENGTH):
+    elif errorType == "header_too_long":
+        if(data < MAX_HEADER_LENGTH):
+            return False
         return True
-    return False
+    elif errorType == "version_not_supported":
+        http_version = data.split("/", 1)
+        if(len(http_version) != 2 or http_version[0] != "HTTP" or (http_version[0].lstrip())[0] != "1"):
+            return True
+        return False
+    elif errorType == "host_not_available":
+        if("Host" not in data):
+            return True
+        return False
 
 
 # seperate request header, body, method, uri, data etc...
 def parse_request(request):
     # seperate header and body
     request = request.split("\r\n\r\n")
+
     header = request[0]
     body = ""
     if(len(request) > 1):
@@ -48,14 +61,18 @@ def parse_request(request):
         return response
     
     [req_method, req_uri, http_version] = first_line
-    
-    if(not can_server_handle_uri(len(req_uri))):
+
+    if(isError(len(req_uri), "uri_too_long")):
         response = generate_error_response(414, "URI Too Long", "Requested uri is too long to handle to server.")
         return response
     
-    if(not can_server_handle_method(req_method)):
+    if(isError(req_method, "method_not_implemented")):
         response = generate_error_response(501, "Method Not Implemented", "Requested method is not implemented at server side or server could not support requested method.")
         return response
+    
+    """if(isError(http_version, "version_not_supported")):
+        response = generate_error_response(505, "HTTP Version Not Supported", "HTTP Version Not Supported, either requested wrong version format or requested http version is not supported by server.")
+        return response"""
     
     headers = header_lines[1:]
     header_dict = {}
@@ -65,7 +82,7 @@ def parse_request(request):
             # TODO cross check response code
             response = generate_error_response(400, "Bad Request", "Header format is incorrect.")
             return response
-        if(not can_server_handle_header(len(single_header[1]))):
+        if(isError(len(single_header[1]), "header_too_long")):
             response = generate_error_response(431, "Request header fields too large", "Requested header field is too large to handle to server.")
             return response
         # TODO check for supported 
@@ -73,11 +90,47 @@ def parse_request(request):
         single_header[1] = single_header[1].strip()
         
         header_dict[single_header[0]] = single_header[1]
-        print(single_header)
+    if(isError(header_dict, "host_not_available")):
+        response = generate_error_response(400, "Bad Request", "Header format is incorrect.")
+        return response
 
-    return header_dict
+    return {"headers" : header_dict, "uri" : req_uri, "method" : req_method, "version" : http_version, "body" : body}
 
     
+def sendResponse():
+    pass
+
+def buildResponse(reqDict):
+    headers = reqDict.get("headers")
+    uri = reqDict.get("uri")
+    method = reqDict.get("method")
+    body = reqDict.get("body")
+    accept = headers.get("accept", "*/*")
+    acceptEncoding = headers.get("accept-encoding", "")
+    contentEncoding = utility.handleEncodingPriority(acceptEncoding)
+    if contentEncoding == None:
+        return generate_error_response(406, "Not Acceptable", "Error in content-encoding header field or server could not handle content-encoding header field.")
+
+    
+    path = urlparse(uri).path
+    if path == "/":
+        path = "/index.html"
+    path = DEFAULT_DIR_PATH + path
+    
+    if not os.path.isfile(path):
+        return generate_error_response(404, "Not Found", "Could not found requested resource.")
+    """
+    TODO
+    Doubt: How to provide file according to accept header?
+    1. Does same file with different extenstion is available at server side. or
+    2. Do we need to convert file type like jpg to png.
+    """
+    
+    acceptContent = utility.handleAcceptContentPriority()
+
+
+
+
 
 def new_thread(client_conn, client_addr):
     req = b''
@@ -87,7 +140,13 @@ def new_thread(client_conn, client_addr):
         if len(partial_request) < 30:
             break
 
-    parse_request(req.decode())
+    reqDict = parse_request(req.decode())
+    if(not isinstance(reqDict, dict)):
+        sendResponse()
+    else:
+        buildResponse(reqDict)
+
+    print(reqDict)
 
     
 
@@ -114,7 +173,7 @@ def main():
 
     while True:
         client_conn, client_addr = s_socket.accept()
-        if(can_server_handle_req()):
+        if(not isError(req_count, "req_too_long")):
             start_new_thread(new_thread, (client_conn, client_addr))
         else:
             response = generate_error_response(503, "Service Unavailable")
