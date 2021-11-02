@@ -3,14 +3,14 @@ import gzip
 import zlib
 import brotli
 import lzw3
-
+import mimetypes
+import os
 
 
 def handleEncodingPriority(val):
     if val == "":
         return "identity"
-    availableEncodings = ["br","compress", "deflate", "gzip", "exi", "pack200-gzip", 
-        "x-compress","x-gzip", "zstd"]
+    availableEncodings = ["br","compress", "deflate", "gzip", "x-gzip"]
     processedEncodings = {}
 
     accValues = val.split(",")
@@ -24,7 +24,7 @@ def handleEncodingPriority(val):
             for enc in availableEncodings:
                 if enc not in processedEncodings:
                     processedEncodings[enc] = priority
-        else:
+        elif tmpArr[0] in availableEncodings:
             processedEncodings[tmpArr[0]] = priority
     
     result = max(processedEncodings, key = processedEncodings.get)
@@ -32,9 +32,43 @@ def handleEncodingPriority(val):
         return result
     return None
 
+def stripList(listObj):
+    for i in range (len(listObj)):
+        listObj[i] = listObj[i].strip()
+    return listObj
 
-def handleAcceptContentPriority(val):
-    pass
+def getExtension(mimeType):
+    return mimetypes.guess_all_extensions(mimeType)
+
+def handleAcceptContentPriority(filePath, val):
+    print(filePath)
+    acceptList = stripList(val.split(","))
+    acceptDict = {}
+    fileExt = "." + filePath.rsplit(".", 1)[1]
+    filePath = filePath.rsplit(".", 1)[0]
+    for accept in acceptList:
+        tmpArr = accept.split(";", 1)
+        if accept == "*/*":
+            if(len(tmpArr) == 1):
+                acceptDict[fileExt] = 1
+            else:
+                acceptDict[fileExt] = tmpArr[1]
+
+        extensionArr = getExtension(tmpArr[0])
+        for extension in extensionArr:
+            tmpPath = filePath + extension
+            print(tmpPath)
+            if os.path.isfile(tmpPath):
+                if(len(tmpArr) == 1):
+                    acceptDict[extension] = 1
+                else:
+                    acceptDict[extension] = tmpArr[1]
+                break
+                
+    return max(acceptDict, key = acceptDict.get)
+
+    
+
 
 def serverInfo():
     name = "MY-HTTP-SERVER"
@@ -50,12 +84,15 @@ def toRFC_Date(date):
 def generateResponse(respDict):
     firstLine = respDict["Version"] + " " + respDict["Status-Code"] + " " + respDict["Status-Phrase"] + "\r\n"
 
-    body = respDict["body"]
+    body = respDict.get("body", None)
     result = firstLine
     for key in respDict["headers"]:
         result += key + ": " + str(respDict["headers"][key]) + "\r\n"
     result += "\r\n"    
-    result = result.encode() + body
+    if body:
+        result = result.encode() + body
+    else:
+        result = result.encode()
     return result
 
 def encodeData(data, encodeFormat):
