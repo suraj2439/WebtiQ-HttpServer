@@ -1,11 +1,20 @@
 
+import gzip
 import mimetypes
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from datetime import datetime
 import hashlib
 import time
 import os
+import json
+import email.parser
+
+import lzw3
+import zlib
+
+from requests_toolbelt import multipart
 import utility
+import brotli
 
 MAX_REQ = 50
 MAX_URI_LENGTH = 500
@@ -14,6 +23,9 @@ TIME_DIFF = 19800
 SUPPORTED_METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD"]
 DEFAULT_DIR_PATH = "/home/suraj/Documents/study/TY/CN/Project"
 EXPIRE_TIME = 86400
+POST_FILE_PATH = "/home/suraj/Documents/study/TY/CN/Project/post.txt"
+SERVER_PORT = 7000
+
 
 def get_or_head(reqDict, method):
     responseDict = {}
@@ -24,6 +36,13 @@ def get_or_head(reqDict, method):
         path = "/index.html"
     path = DEFAULT_DIR_PATH + path
 
+    userAgent = headers.get("User-Agent", "")
+    if "Windows" in userAgent:
+        newPath = DEFAULT_DIR_PATH + "/windows" + urlparse(uri).path
+        if os.path.isfile(newPath):
+            path = newPath
+
+
     accept = headers.get("Accept", "*/*")
     fileExtension = utility.handleAcceptContentPriority(path, accept)
     acceptEncoding = headers.get("Accept-Encoding", "")
@@ -31,7 +50,8 @@ def get_or_head(reqDict, method):
     if contentEncoding == None:
         return {"isError": True, "Status-Code": 406, "Status-Phrase": "Not Acceptable", "Msg": "Error in content-encoding header field or server could not handle content-encoding header field." }
     
-    path = path.rsplit(".", 1)[0] + fileExtension
+    if fileExtension:
+        path = path.rsplit(".", 1)[0] + fileExtension
     if not os.path.isfile(path):
         return {"isError": True, "Status-Code": 404, "Status-Phrase": "Not Found", "Msg": "Could not found requested resource." }
     else:
@@ -147,7 +167,6 @@ def get_or_head(reqDict, method):
 
     return responseDict
 
-
 def post(reqDict):
     responseDict = {}
     headers = reqDict.get("headers")
@@ -158,15 +177,25 @@ def post(reqDict):
     path = DEFAULT_DIR_PATH + path
 
     body = reqDict.get("body")
-    print(body)
-    accept = headers.get("Accept", "*/*")
-    fileExtension = utility.handleAcceptContentPriority(path, accept)
-    acceptEncoding = headers.get("Accept-Encoding", "")
-    contentEncoding = utility.handleEncodingPriority(acceptEncoding)
-    if contentEncoding == None:
-        return {"isError": True, "Status-Code": 406, "Status-Phrase": "Not Acceptable", "Msg": "Error in content-encoding header field or server could not handle content-encoding header field." }
-    
-    path = path.rsplit(".", 1)[0] + fileExtension
+    contentEncoding = headers.get("Content-Encoding", "")
+    contentType = headers.get("Content-Type", "")
+
+    #TODO check order of decompress
+    contentEncoding.split(",").reverse()
+    # decompress payload data
+    for enc in contentEncoding:
+        enc = enc.strip()
+        if enc == "":
+            body = body.decode()
+        elif enc == "gzip":
+            body = gzip.decompress(body)
+        elif enc == "compress":
+            body= lzw3.decompress(body)
+        elif enc == "deflate":
+            body = zlib.decompress(body)
+        elif enc == "br":
+            body = brotli.decompress(body)
+        #TODO handle not supporting encoding
 
     if not os.path.isfile(path):
         if not os.access(path.rsplit("/", 1)[0], os.W_OK):
@@ -189,11 +218,9 @@ def post(reqDict):
     for i in range (len(ifNoneMatchArr)):
         ifNoneMatchArr[i] = ifNoneMatchArr[i].strip()
     
-
     # generate ETag
     ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
     if "If-Match" in headers.keys():
-        print(ifMatchArr)
         if ETag not in ifMatchArr and ifMatchArr[0] != "*":
             return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not match given ETag." }
     elif "If-Unmodified-Since" in headers.keys():
@@ -210,7 +237,6 @@ def post(reqDict):
         date = datetime.strptime(headers["If-Modified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
         timeFromHeader = time.mktime(date.timetuple())
         lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
-        print(timeFromHeader, lastModifiedTime)
         if timeFromHeader >= lastModifiedTime:
             return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
 
@@ -218,4 +244,147 @@ def post(reqDict):
         checksum = hashlib.md5(body).hexdigest()
         if(checksum != headers["Content-MD5"]):
             return {"isError": True, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Checksum error." }
+
+
+    if "application/x-www-form-urlencoded" in contentType:
+        postDataDict = parse_qs(body)
+    elif "application/json" in contentType:
+        postDataDict = json.loads(body)
+    elif "multipart/form-data" in contentType:
+        boundary = contentType.rsplit("=", 1)[1].strip()
+        #print(body.split(boundary + "\r\n"))
+        multipartArr = body.split("--" + boundary+ "\r\n")[1:]
+        multipartArr[len(multipartArr)-1] = multipartArr[len(multipartArr)-1].rsplit("\r\n", 1)[0]
+        for part in multipartArr:
+            [headers, body] = part.split("\r\n\r\n")
+            contentType = "text"
+            if "\r\n" in headers:
+                [headers, contentType] = headers.rsplit("\r\n", 1)
+                contentType = contentType.split(":", 1)[1].strip()
+            headers = headers.split(";")
+            headers = utility.stripList(headers)
+
+            print(headers, contentType)
+            #print(body)
+
+        return {"isError": True, "Status-Code": 1111111111, "Status-Phrase": "Bad Request", "Msg": "Checksum error." }
+
+    else:
+        fd.write(body)
+        fd.close()
+        # boundary split, newline split
+
+    #postFileDesc = open(POST_FILE_PATH, "a")
+    json.dump({utility.toRFC_Date(datetime.utcnow()): postDataDict}, fd, indent="\t")
+
+    responseDict = {}
+    responseDict["isError"] = False
+    responseDict["Status-Code"] = "303"
+    responseDict["Status-Phrase"] = "See Other"
+    responseDict["headers"] = {}
+    responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
+    #TODO implement this header in testing code.
+    responseDict["headers"]["Location"] = "http://localhost:" + str(SERVER_PORT) + "/postSuccess.html"
+    responseDict["headers"]["Content-Length"] = 0
+
+    return responseDict
+
+def put(reqDict):
+    responseDict = {}
+    headers = reqDict.get("headers")
+    uri = reqDict.get("uri")
+    path = urlparse(uri).path
+    if path == "/":
+        path = "/index.html"
+    path = DEFAULT_DIR_PATH + path
+
+    body = reqDict.get("body")
+    contentEncoding = headers.get("Content-Encoding", "")
+    contentType = headers.get("Content-Type", "")
+
+    #TODO check order of decompress
+    contentEncoding.split(",").reverse()
+    # decompress payload data
+    for enc in contentEncoding:
+        enc = enc.strip()
+        if enc == "":
+            body = body.decode()
+        elif enc == "gzip":
+            body = gzip.decompress(body)
+        elif enc == "compress":
+            body= lzw3.decompress(body)
+        elif enc == "deflate":
+            body = zlib.decompress(body)
+        elif enc == "br":
+            body = brotli.decompress(body)
+        #TODO handle not supporting encoding
+        
+    if not os.path.isfile(path):
+        if not os.access(path.rsplit("/", 1)[0], os.W_OK):
+            return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to post at this location" }
+        else:
+            fd = open(path, "w")
+    else:
+        if not os.access(path, os.W_OK):
+            return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to post at this location" }
+        else:
+            fd = open(path, "w")
+        
+    ifMatch = headers.get('If-Match',"*")
+    ifNoneMatch = headers.get('If-None-Match',"")
+    
+    ifMatchArr = ifMatch.split(",")
+    ifNoneMatchArr = ifNoneMatch.split(",")
+    for i in range (len(ifMatchArr)):
+        ifMatchArr[i] = ifMatchArr[i].strip()
+    for i in range (len(ifNoneMatchArr)):
+        ifNoneMatchArr[i] = ifNoneMatchArr[i].strip()
+    
+    # generate ETag
+    ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
+    if "If-Match" in headers.keys():
+        if ETag not in ifMatchArr and ifMatchArr[0] != "*":
+            return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not match given ETag." }
+    elif "If-Unmodified-Since" in headers.keys():
+        date = datetime.strptime(headers["If-Unmodified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
+        timeFromHeader = time.mktime(date.timetuple())
+        lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
+        if timeFromHeader < lastModifiedTime:
+            return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
+    
+    if "If-None-Match" in headers.keys():
+        if "*" in ifNoneMatchArr or ETag in ifNoneMatchArr:
+            return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
+    elif "If-Modified-Since" in headers.keys():
+        date = datetime.strptime(headers["If-Modified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
+        timeFromHeader = time.mktime(date.timetuple())
+        lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
+        if timeFromHeader >= lastModifiedTime:
+            return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
+
+    if('Content-MD5' in headers.keys()):
+        checksum = hashlib.md5(body).hexdigest()
+        if(checksum != headers["Content-MD5"]):
+            return {"isError": True, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Checksum error." }
+
+
+    if "application/x-www-form-urlencoded" in contentType:
+        postDataDict = parse_qs(body)
+    elif "application/json" in contentType:
+        postDataDict = json.loads(body)
+
+    #postFileDesc = open(POST_FILE_PATH, "a")
+    json.dump({utility.toRFC_Date(datetime.utcnow()): postDataDict}, fd, indent="\t")
+
+    responseDict = {}
+    responseDict["isError"] = False
+    responseDict["Status-Code"] = "303"
+    responseDict["Status-Phrase"] = "See Other"
+    responseDict["headers"] = {}
+    responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
+    #TODO implement this header in testing code.
+    responseDict["headers"]["Location"] = "http://localhost:" + str(SERVER_PORT) + "/postSuccess.html"
+    responseDict["headers"]["Content-Length"] = 0
+
+    return responseDict
      

@@ -41,7 +41,6 @@ def getExtension(mimeType):
     return mimetypes.guess_all_extensions(mimeType)
 
 def handleAcceptContentPriority(filePath, val):
-    print(filePath)
     acceptList = stripList(val.split(","))
     acceptDict = {}
     fileExt = "." + filePath.rsplit(".", 1)[1]
@@ -57,14 +56,15 @@ def handleAcceptContentPriority(filePath, val):
         extensionArr = getExtension(tmpArr[0])
         for extension in extensionArr:
             tmpPath = filePath + extension
-            print(tmpPath)
             if os.path.isfile(tmpPath):
                 if(len(tmpArr) == 1):
                     acceptDict[extension] = 1
                 else:
                     acceptDict[extension] = tmpArr[1]
                 break
-                
+
+    if len(acceptDict) == 0:
+        return None 
     return max(acceptDict, key = acceptDict.get)
 
     
@@ -94,6 +94,35 @@ def generateResponse(respDict):
     else:
         result = result.encode()
     return result
+
+
+
+# def generateResponse(respDict):
+#     entityHeaders = ["Allow", "Content-Encoding", "Content-Language", "Content-Length", "Content-Location", 
+#                     "Content-MD5", "Content-Range", "Content-Type", "Expires", "Last-Modified"]
+#     respDict["headers"]["Transfer-Encoding"] = "gzip"
+
+#     firstLine = respDict["Version"] + " " + respDict["Status-Code"] + " " + respDict["Status-Phrase"] + "\r\n"
+
+#     body = respDict.get("body", None)
+#     result = firstLine
+#     entityData = ""
+#     for key in respDict["headers"]:
+#         if key not in entityHeaders:
+#             result += key + ": " + str(respDict["headers"][key]) + "\r\n"
+#         else:
+#             entityData += key + ": " + str(respDict["headers"][key]) + "\r\n"
+#     entityData += "\r\n"
+#     #result += "\r\n"   
+    
+#     if body:
+#         entityData = entityData.encode() + body
+#     else:
+#         entityData = entityData.encode()
+#     entityData = gzip.compress(entityData)
+
+#     return result.encode() + entityData
+
 
 def encodeData(data, encodeFormat):
     if encodeFormat == "gzip" or encodeFormat == "x-gzip":
