@@ -1,22 +1,25 @@
 import socket
 from _thread import *
+from time import time
 import utility
 from datetime import datetime
 import httpMethods
+from requests_toolbelt.multipart import decoder
 
 """
 Cookie, local time and gmt time, content-type
 
 Accept
 Accept-Charset
-Content-Type
-User-Agent
+Content-Type **
 Content-Location
 Location       TODO Use in POST request
 Set-Cookie
 Transfer-Encoding
 Connection Keep-Alive
 """
+
+# TODO handle absolute uri
 
 
 
@@ -63,8 +66,8 @@ def isError(data, errorType):
 # seperate request header, body, method, uri, data etc...
 def parse_request(request):
     # seperate header and body
-    request = request.split("\r\n\r\n")
 
+    request = request.split("\r\n\r\n", 1)
     header = request[0]
     body = ""
     if(len(request) > 1):
@@ -121,19 +124,42 @@ def buildResponse(reqDict):
         return httpMethods.get_or_head(reqDict, "HEAD")
     elif method == "POST":
         return httpMethods.post(reqDict)
-    
+    elif method == "PUT":
+        return httpMethods.put(reqDict)
+    elif method == "DELETE":
+        return httpMethods.delete(reqDict)
+    else:
+        print("Unknown method.")
+        exit()
 
 
-def new_thread(client_conn, client_addr):
+def receiveRequest(connection, clientAddr, newSocket):
+    partialReq = b""
+    while True:
+        partialReq += connection.recv(8096)
+        if "\r\n\r\n".encode() in partialReq:
+            break
+    contentLength = int(parse_request(partialReq.decode("ISO-8859-1"))["headers"].get("Content-Length", 0)) 
+    contentLength -= len(partialReq.split("\r\n\r\n".encode(), 1)[1])
+    body = b""
+
+    while len(body) < contentLength:
+        body += connection.recv(8096)
+    return (partialReq + body).strip()
+
+
+def new_thread(client_conn, client_addr, newSocket):
     req = b''
     #TODO handle error
-    while True:
-        partial_request = client_conn.recv(3000)
-        req += partial_request
-        if len(partial_request) < 3000:
-            break
-
-    reqDict = parse_request(req.decode())
+    #req = recv_timeout(new_socket, client_conn)
+    req = receiveRequest(client_conn, client_addr, newSocket)
+    # while True:
+    #     partial_request = client_conn.recv(13063420)
+    #     req += partial_request
+    #     if len(partial_request) < 13063420:
+    #         break
+    #print(req)
+    reqDict = parse_request(req.decode("ISO-8859-1"))
     if reqDict["isError"]:
         content = generate_error_response(reqDict["Status-Code"], reqDict["Status-Phrase"], reqDict["Msg"])
         responseDict = { "Version": "HTTP/1.1", "Status-Code": str(reqDict["Status-Code"]), "Status-Phrase": reqDict["Status-Phrase"], 
@@ -148,7 +174,7 @@ def new_thread(client_conn, client_addr):
     else:
         response = buildResponse(reqDict)
         resp = { "Version": "HTTP/1.1", "Status-Code": str(response["Status-Code"]), "Status-Phrase": response["Status-Phrase"], 
-            "headers": {"Date": utility.toRFC_Date(datetime.utcnow()), "Server": utility.serverInfo(), "Connection": "close", "Content-Length": ""  }}
+            "headers": {"Date": utility.toRFC_Date(datetime.utcnow()), "Server": utility.serverInfo(), "Connection": "close"  }}
 
         if response["isError"]:
             content = generate_error_response(response["Status-Code"], response["Status-Phrase"], response["Msg"])
@@ -157,9 +183,9 @@ def new_thread(client_conn, client_addr):
             if reqDict["method"] != "HEAD":
                 resp["body"] = content.encode()
         else:
-            if reqDict["method"] != "HEAD":
+            if response.get("body", None):
                 resp["body"] = response["body"]
-            resp["headers"]["Content-Length"] = response["headers"]["Content-Length"]
+                resp["headers"]["Content-Length"] = response["headers"]["Content-Length"]
             resp["headers"].update(response["headers"])
             
         client_conn.send(utility.generateResponse(resp))
@@ -199,7 +225,7 @@ def main():
     while True:
         client_conn, client_addr = s_socket.accept()
         if(not isError(req_count, "req_too_long")):
-            start_new_thread(new_thread, (client_conn, client_addr))
+            start_new_thread(new_thread, (client_conn, client_addr,s_socket))
         else:
             # temporarily server could not serve the request
             response = generate_error_response(503, "Service Unavailable")
