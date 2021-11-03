@@ -1,5 +1,6 @@
 import platform
 import gzip
+import shutil
 import zlib
 import brotli
 import lzw3
@@ -95,6 +96,12 @@ def generateResponse(respDict):
         result = result.encode()
     return result
 
+
+def deleteData(path, isFile):
+    if isFile:
+        os.remove(path)
+    else:
+        shutil.rmtree(path, ignore_errors=True)
 
 
 # def generateResponse(respDict):

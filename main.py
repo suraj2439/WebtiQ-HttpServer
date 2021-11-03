@@ -30,7 +30,7 @@ MAX_URI_LENGTH = 500
 MAX_HEADER_LENGTH = 500
 TIME_DIFF = 19800
 SUPPORTED_METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD"]
-DEFAULT_DIR_PATH = "/home/suraj/Documents/study/TY/CN/Project/"
+DEFAULT_DIR_PATH = "/home/suraj/Documents/study/TY/CN/Project/test/"
 EXPIRE_TIME = 86400
 
 req_count = 0
