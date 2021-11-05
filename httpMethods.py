@@ -9,9 +9,10 @@ import os
 import json
 import shutil
 from _thread import *
-
+from threading import Lock
 import lzw3
 import zlib
+import random
 
 from requests_toolbelt import multipart
 import utility
@@ -27,9 +28,10 @@ EXPIRE_TIME = 86400
 POST_FILE_PATH = "/home/suraj/Documents/study/TY/CN/Project/post.txt"
 SERVER_PORT = 7000
 MAX_DELETE_SIZE = 100
+COOKIE_EXPIRE_TIME = 10 #TODO
+MY_COOKIE_NAME = "MyHttpCookie"
 
-
-def get_or_head(reqDict, method):
+def get_or_head(reqDict, method, globalCookieDict):
     responseDict = {}
     headers = reqDict.get("headers")
     uri = reqDict.get("uri")
@@ -49,6 +51,50 @@ def get_or_head(reqDict, method):
     fileExtension = utility.handleAcceptContentPriority(path, accept)
     acceptEncoding = headers.get("Accept-Encoding", "")
     contentEncoding = utility.handleEncodingPriority(acceptEncoding)
+    cookiesDict = utility.parseCookies(headers.get("Cookie", None))
+    cookie = cookiesDict.get(MY_COOKIE_NAME, None)
+    if not cookie:
+        tmpStr = str(time()) + str(random.randint(10000, 99999)) 
+        newCookie = hashlib.md5(tmpStr.encode()).hexdigest()
+        globalCookieDict[newCookie] = {
+            "host": reqDict["Client-Address"],
+            "expireTime": COOKIE_EXPIRE_TIME,
+            "tot_get_requests": 0,
+            "tot_head_requests": 0,
+            "tot_post_requests": 0,
+            "tot_put_requests": 0,
+            "tot_delete_requests": 0
+        }
+        if method == "HEAD":
+            globalCookieDict[newCookie]["tot_head_requests"] = 1
+        else:
+            globalCookieDict[newCookie]["tot_get_requests"] = 1
+    else:
+        # check for expire, check if available
+        globalCookieDict = utility.removeExpiredCookies(globalCookieDict)
+        checkCookie = globalCookieDict.get(cookie, None)
+        if not checkCookie:
+            # set cookie
+            tmpStr = str(time()) + str(random.randint(10000, 99999)) 
+            newCookie = hashlib.md5(tmpStr.encode()).hexdigest()
+            globalCookieDict[newCookie] = {
+                "host": reqDict["Client-Address"],
+                "tot_get_requests": 0,
+                "tot_head_requests": 0,
+                "tot_post_requests": 0,
+                "tot_put_requests": 0,
+                "tot_delete_requests": 0
+            }
+            if method == "HEAD":
+                globalCookieDict[newCookie]["tot_head_requests"] = 1
+            else:
+                globalCookieDict[newCookie]["tot_get_requests"] = 1
+        else:
+            if method == "GET":
+                globalCookieDict[cookie]["tot_get_requests"] += 1
+            else:
+                globalCookieDict[cookie]["tot_head_requests"] += 1
+
     if contentEncoding == None:
         return {"isError": True, "Status-Code": 406, "Status-Phrase": "Not Acceptable", "Msg": "Error in content-encoding header field or server could not handle content-encoding header field." }
     
@@ -160,7 +206,7 @@ def get_or_head(reqDict, method):
     responseDict["headers"]["ETag"] = ETag
     responseDict["headers"]["Accept-Ranges"] = "bytes"
     body = utility.encodeData(fileData, contentEncoding)
-    responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
+    #responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
     responseDict["headers"]["Content-Length"] = len(body)
     
     if(method == "GET"):

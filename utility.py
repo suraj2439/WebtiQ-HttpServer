@@ -1,11 +1,15 @@
 import platform
 import gzip
 import shutil
+from typing import Match
 import zlib
 import brotli
 import lzw3
 import mimetypes
 import os
+import time
+import math
+from datetime import datetime
 
 
 def handleEncodingPriority(val):
@@ -68,8 +72,15 @@ def handleAcceptContentPriority(filePath, val):
         return None 
     return max(acceptDict, key = acceptDict.get)
 
-    
-
+def parseCookies(cookies):
+    if not cookies:
+        return {}
+    cookies = cookies.split(";")
+    result = {}
+    for cookie in cookies:
+        [name, value] = stripList(cookie.split("="))
+        result[name] = value
+    return result
 
 def serverInfo():
     name = "MY-HTTP-SERVER"
@@ -141,4 +152,49 @@ def encodeData(data, encodeFormat):
     elif encodeFormat == "br":
         return brotli.compress(data)
     return data
+
+def logTime():
+    timezone = -time.timezone/3600
+    # extract hours
+    timezoneHour = math.floor(timezone)
+    # extract minutes
+    timezoneMin = int((timezone-timezoneHour)*60)
+    date = datetime.now()
+    monthDict = { 1:"Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"} 
+    date = "%02d/%s/%04d:%02d:%02d:%02d +" % (date.day, monthDict[date.month], date.year, date.hour, date.minute, date.second)
+    date+=str(timezoneHour)
+    date+=str(timezoneMin)
+    return date
+
+def writeAccessLog(reqDict, respDict, clientAddr, logFilePath):
+    logDict = {
+        'laddr': clientAddr[0],
+        'identity':'-',
+        'userid':'-',
+        'time': logTime(),
+        'requestLine':'"-"',
+        'statusCode':'-',
+        'dataSize':0,
+        'referer':'"-"',
+        'userAgent':'"-"',
+        'cookie':'"-"',
+        'set-cookie':'"-"'
+    }
+    logDict["requestLine"] = "'" + reqDict["First-Line"] + "'"
+    logDict["statusCode"] = respDict["Status-Code"]
+    logDict["dataSize"] = respDict["headers"]["Content-Length"]
+    logDict["referer"] = "'" + reqDict["headers"].get("Referer", "-") + "'"
+    logDict["userAgent"] = "'" + reqDict["headers"].get("User-Agent", "-") + "'"
+    logDict["cookie"] = "'" + reqDict["headers"].get("Cookie", "-") + "'"
+    logDict["set-cookie"] = "'" + respDict["headers"].get("Set-Cookie", "-") + "'"
+
+    log = ""
+    for logKey in logDict:
+        log+=str(logDict[logKey]) + " "
+    log += "\n"
+    with open(logFilePath, "a") as fd:
+        fd.write(log)
+        fd.close()
     
+def removeExpiredCookies(globalCookies):
+    return globalCookies
