@@ -24,15 +24,15 @@ MAX_HEADER_LENGTH = 500
 TIME_DIFF = 19800
 SUPPORTED_METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD"]
 DEFAULT_DIR_PATH = "/home/suraj/Documents/study/TY/CN/Project/test/"
-EXPIRE_TIME = 86400
+EXPIRE_TIME = 10
 POST_FILE_PATH = "/home/suraj/Documents/study/TY/CN/Project/post.txt"
 SERVER_PORT = 7000
 MAX_DELETE_SIZE = 100
-COOKIE_EXPIRE_TIME = 10 #TODO
-MY_COOKIE_NAME = "MyHttpCookie"
 
-def get_or_head(reqDict, method, globalCookieDict):
+
+def get_or_head(reqDict, method):
     responseDict = {}
+    body = ""
     headers = reqDict.get("headers")
     uri = reqDict.get("uri")
     path = urlparse(uri).path
@@ -49,65 +49,35 @@ def get_or_head(reqDict, method, globalCookieDict):
 
     accept = headers.get("Accept", "*/*")
     fileExtension = utility.handleAcceptContentPriority(path, accept)
+    acceptCharset = headers.get("Accept-Charset", "utf-8")
+    responseCharset = utility.handleAcceptCharsetPriority(acceptCharset)
+
     acceptEncoding = headers.get("Accept-Encoding", "")
     contentEncoding = utility.handleEncodingPriority(acceptEncoding)
-    cookiesDict = utility.parseCookies(headers.get("Cookie", None))
-    cookie = cookiesDict.get(MY_COOKIE_NAME, None)
-    if not cookie:
-        tmpStr = str(time()) + str(random.randint(10000, 99999)) 
-        newCookie = hashlib.md5(tmpStr.encode()).hexdigest()
-        globalCookieDict[newCookie] = {
-            "host": reqDict["Client-Address"],
-            "expireTime": COOKIE_EXPIRE_TIME,
-            "tot_get_requests": 0,
-            "tot_head_requests": 0,
-            "tot_post_requests": 0,
-            "tot_put_requests": 0,
-            "tot_delete_requests": 0
-        }
-        if method == "HEAD":
-            globalCookieDict[newCookie]["tot_head_requests"] = 1
-        else:
-            globalCookieDict[newCookie]["tot_get_requests"] = 1
-    else:
-        # check for expire, check if available
-        globalCookieDict = utility.removeExpiredCookies(globalCookieDict)
-        checkCookie = globalCookieDict.get(cookie, None)
-        if not checkCookie:
-            # set cookie
-            tmpStr = str(time()) + str(random.randint(10000, 99999)) 
-            newCookie = hashlib.md5(tmpStr.encode()).hexdigest()
-            globalCookieDict[newCookie] = {
-                "host": reqDict["Client-Address"],
-                "tot_get_requests": 0,
-                "tot_head_requests": 0,
-                "tot_post_requests": 0,
-                "tot_put_requests": 0,
-                "tot_delete_requests": 0
-            }
-            if method == "HEAD":
-                globalCookieDict[newCookie]["tot_head_requests"] = 1
-            else:
-                globalCookieDict[newCookie]["tot_get_requests"] = 1
-        else:
-            if method == "GET":
-                globalCookieDict[cookie]["tot_get_requests"] += 1
-            else:
-                globalCookieDict[cookie]["tot_head_requests"] += 1
-
+    
     if contentEncoding == None:
         return {"isError": True, "Status-Code": 406, "Status-Phrase": "Not Acceptable", "Msg": "Error in content-encoding header field or server could not handle content-encoding header field." }
     
     if fileExtension:
         path = path.rsplit(".", 1)[0] + fileExtension
+
     if not os.path.isfile(path):
         return {"isError": True, "Status-Code": 404, "Status-Phrase": "Not Found", "Msg": "Could not found requested resource." }
     else:
         if not os.access(path, os.R_OK):
             return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to read the file." }
-        fd = open(path, 'rb')
-        fileData = fd.read()
-        fd.close()
+        contentType = mimetypes.guess_type(path)[0]
+        if contentType == None:
+            contentType = "text/plain"
+        if "text" in contentType:
+            fd = open(path, 'r')
+            fileData = fd.read()
+            fd.close()
+        else:
+            fd = open(path, 'rb')
+            fileData = fd.read()
+            fd.close()
+
 
     ifMatch = headers.get('If-Match',"*")
     ifNoneMatch = headers.get('If-None-Match',"")
@@ -123,7 +93,6 @@ def get_or_head(reqDict, method, globalCookieDict):
     # generate ETag
     ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
     if "If-Match" in headers.keys():
-        print(ifMatchArr)
         if ETag not in ifMatchArr and ifMatchArr[0] != "*":
             return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not match given ETag." }
     elif "If-Unmodified-Since" in headers.keys():
@@ -133,18 +102,26 @@ def get_or_head(reqDict, method, globalCookieDict):
         if timeFromHeader < lastModifiedTime:
             return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
     
+    statusCode = 200
+    statusPhrase = "OK"
+    flag = True
     if "If-None-Match" in headers.keys():
         if "*" in ifNoneMatchArr or ETag in ifNoneMatchArr:
-            return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
+            statusCode = 304
+            statusPhrase = "Not Modified"
+            flag = False
+            #return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
     elif "If-Modified-Since" in headers.keys():
         date = datetime.strptime(headers["If-Modified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
         timeFromHeader = time.mktime(date.timetuple())
         lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
-        print(timeFromHeader, lastModifiedTime)
         if timeFromHeader >= lastModifiedTime:
+            statusCode = 304
+            statusPhrase = "Not Modified"
+            flag = False
             return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
             
-    if "Range" in headers.keys() and (headers["Range"].split("="))[0] == "bytes":
+    if flag and "Range" in headers.keys() and (headers["Range"].split("="))[0] == "bytes":
         dataAvailable = True
         # check for conditions on range header
         if "If-Range" in headers.keys():
@@ -164,7 +141,47 @@ def get_or_head(reqDict, method, globalCookieDict):
         if dataAvailable:
             rangesList = headers["Range"].split('=')[1].split(',')
             if len(rangesList) > 1:
-                return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "" }
+                for i in range (len(rangesList)):
+                    r_range = rangesList[i]
+                    if r_range[0] == "-":
+                        startPos = 0
+                        endPos = r_range[1:]
+                    # range format = <value>-
+                    elif r_range[-1] == "-":
+                        startPos = r_range[:-1]
+                        endPos = None
+                    # range format = <value>-<value>
+                    else:
+                        [startPos, endPos] = r_range.split("-")
+                    
+                    rangesList[i] = (int(startPos), int(endPos))
+
+                boundary = utility.generateBoundary()
+                result = b""
+                for pair in rangesList:
+                    result += ("--" + boundary + "\r\n").encode(responseCharset)
+                    result += ("Content-Type: " + contentType + "; charset=" + responseCharset + "\r\n").encode(responseCharset)
+                    result += (("Content-Range: bytes" + str(pair[0]) + "-" + str(pair[1]) + "/" + str(len(fileData)) + "\r\n")).encode(responseCharset)
+                    result += ("Content-Encoding: " + contentEncoding + "\r\n\r\n").encode(responseCharset)
+                    result += (fileData[int(startPos) : int(endPos)+1]).encode(responseCharset) + "\r\n".encode(responseCharset)
+                result += ("--" + boundary + "--" + "\r\n").encode(responseCharset)
+
+                body = result
+
+                responseDict["isError"] = False
+                responseDict["Status-Code"] = "206"
+                responseDict["Status-Phrase"] = "Partial Content"
+                responseDict["headers"] = {}
+                responseDict["headers"]["Content-Length"] = len(body)
+                responseDict["headers"]["Last-Modified"] = utility.toRFC_Date(datetime.fromtimestamp(int(os.path.getmtime(path)) - TIME_DIFF))
+                responseDict["headers"]["ETag"] = ETag
+                responseDict["headers"]["Accept-Ranges"] = "bytes"
+                responseDict["headers"]["Content-Type"] = "multipart/byteranges; boundary="+boundary
+                if(method == "GET"):
+                    responseDict["body"] = body
+                    responseDict["headers"]["Content-MD5"] = hashlib.md5(responseDict["body"]).hexdigest()
+                return responseDict
+
             else:
                 r_range = rangesList[0]
                 # range format = -<value>
@@ -186,8 +203,14 @@ def get_or_head(reqDict, method, globalCookieDict):
                     responseDict["headers"] = {}
                     responseDict["headers"]["Content-Range"] = "bytes " + startPos + "-" + endPos + "/" + str(len(fileData))
                     responseDict["headers"]["Content-Encoding"] = contentEncoding
-                    responseDict["headers"]["Content-Type"] = mimetypes.guess_type(path)[0]
-                    body = utility.encodeData(fileData[int(startPos) : int(endPos)+1], contentEncoding)
+                    if "text" in contentType:
+                        responseDict["headers"]["Content-Type"] = contentType + "; charset=" + responseCharset
+                    else:
+                        responseDict["headers"]["Content-Type"] = contentType
+                    body = fileData[int(startPos) : int(endPos)+1]
+                    if "text" in contentType:
+                        body = body.encode(responseCharset)
+                    body = utility.encodeData(body, contentEncoding)
                     responseDict["headers"]["Content-Length"] = len(body)
                     
                     if(method == "GET"):
@@ -196,20 +219,26 @@ def get_or_head(reqDict, method, globalCookieDict):
                     return responseDict
 
     responseDict["isError"] = False
-    responseDict["Status-Code"] = "200"
-    responseDict["Status-Phrase"] = "OK"
+    responseDict["Status-Code"] = str(statusCode)
+    responseDict["Status-Phrase"] = statusPhrase
     responseDict["headers"] = {}
     responseDict["headers"]["Last-Modified"] = utility.toRFC_Date(datetime.fromtimestamp(int(os.path.getmtime(path)) - TIME_DIFF))
-    responseDict["headers"]["Content-Encoding"] = contentEncoding
-    responseDict["headers"]["Content-Type"] = mimetypes.guess_type(path)[0]
-    #responseDict["Content-Type"] = content_type
     responseDict["headers"]["ETag"] = ETag
     responseDict["headers"]["Accept-Ranges"] = "bytes"
+    if "text" in contentType:
+        fileData = fileData.encode(responseCharset)
     body = utility.encodeData(fileData, contentEncoding)
-    #responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
-    responseDict["headers"]["Content-Length"] = len(body)
-    
-    if(method == "GET"):
+    responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
+    responseDict["headers"]["Content-Length"] = 0
+    if flag:
+        responseDict["headers"]["Content-Length"] = len(body)
+        responseDict["headers"]["Content-Encoding"] = contentEncoding
+        if "text" in contentType:
+            responseDict["headers"]["Content-Type"] = contentType + "; charset=" + responseCharset
+        else:
+            responseDict["headers"]["Content-Type"] = contentType
+        
+    if(method == "GET" and flag):
         responseDict["body"] = body
         responseDict["headers"]["Content-MD5"] = hashlib.md5(responseDict["body"]).hexdigest()
 
@@ -279,16 +308,6 @@ def post(reqDict):
         if timeFromHeader < lastModifiedTime:
             return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
     
-    if "If-None-Match" in headers.keys():
-        if "*" in ifNoneMatchArr or ETag in ifNoneMatchArr:
-            return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
-    elif "If-Modified-Since" in headers.keys():
-        date = datetime.strptime(headers["If-Modified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
-        timeFromHeader = time.mktime(date.timetuple())
-        lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
-        if timeFromHeader >= lastModifiedTime:
-            return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
-
     if('Content-MD5' in headers.keys()):
         checksum = hashlib.md5(body).hexdigest()
         if(checksum != headers["Content-MD5"]):
@@ -319,7 +338,6 @@ def post(reqDict):
         
     else:
         responseDict = {}
-        print(contentType)
         if contentType.strip() in ["image/png", "image/jpg", "image/jpeg"]:
             fd = open(path, "wb")
             fd.write(body.encode("ISO-8859-1"))
@@ -425,16 +443,6 @@ def put(reqDict):
         if timeFromHeader < lastModifiedTime:
             return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
     
-    if "If-None-Match" in headers.keys():
-        if "*" in ifNoneMatchArr or ETag in ifNoneMatchArr:
-            return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
-    elif "If-Modified-Since" in headers.keys():
-        date = datetime.strptime(headers["If-Modified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
-        timeFromHeader = time.mktime(date.timetuple())
-        lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
-        if timeFromHeader >= lastModifiedTime:
-            return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
-
     if('Content-MD5' in headers.keys()):
         checksum = hashlib.md5(body).hexdigest()
         if(checksum != headers["Content-MD5"]):
@@ -535,15 +543,6 @@ def delete(reqDict):
                 if timeFromHeader < lastModifiedTime:
                     return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
             
-            if "If-None-Match" in headers.keys():
-                if "*" in ifNoneMatchArr or ETag in ifNoneMatchArr:
-                    return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
-            elif "If-Modified-Since" in headers.keys():
-                date = datetime.strptime(headers["If-Modified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
-                timeFromHeader = time.mktime(date.timetuple())
-                lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
-                if timeFromHeader >= lastModifiedTime:
-                    return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
             # delete file
             if not os.access(path, os.W_OK):
                 return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission delete this file." }

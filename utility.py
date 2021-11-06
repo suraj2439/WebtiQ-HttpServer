@@ -1,5 +1,7 @@
+import hashlib
 import platform
 import gzip
+import random
 import shutil
 from typing import Match
 import zlib
@@ -10,6 +12,9 @@ import os
 import time
 import math
 from datetime import datetime
+
+COOKIE_EXPIRE_TIME = 60 #TODO
+MY_COOKIE_NAME = "MyHttpCookie"
 
 
 def handleEncodingPriority(val):
@@ -48,7 +53,10 @@ def getExtension(mimeType):
 def handleAcceptContentPriority(filePath, val):
     acceptList = stripList(val.split(","))
     acceptDict = {}
-    fileExt = "." + filePath.rsplit(".", 1)[1]
+    fileExt = ""
+    if len(filePath.rsplit(".", 1)) == 2:
+        fileExt = "." + filePath.rsplit(".", 1)[1]
+
     filePath = filePath.rsplit(".", 1)[0]
     for accept in acceptList:
         tmpArr = accept.split(";", 1)
@@ -72,6 +80,30 @@ def handleAcceptContentPriority(filePath, val):
         return None 
     return max(acceptDict, key = acceptDict.get)
 
+def handleAcceptCharsetPriority(acceptCharset):
+    availableEncodings = ["utf-8", "ISO-8859-1"]
+    processedEncodings = {}
+
+    accValues = acceptCharset.split(",")
+    for value in accValues:
+        tmpArr = value.split(";", 1)
+        if(len(tmpArr) == 2):
+            priority = float((tmpArr[1].split("="))[1].strip())
+        else:
+            priority = 1.0
+        if(tmpArr[0] == "*"):
+            for enc in availableEncodings:
+                if enc not in processedEncodings:
+                    processedEncodings[enc] = priority
+        elif tmpArr[0] in availableEncodings:
+            processedEncodings[tmpArr[0]] = priority
+    
+    result = max(processedEncodings, key = processedEncodings.get)
+    if processedEncodings[result] > 0:
+        return result
+    return None
+    
+
 def parseCookies(cookies):
     if not cookies:
         return {}
@@ -93,10 +125,30 @@ def toRFC_Date(date):
     monthDict = { 1:"Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"} 
     return "%s, %02d %s %04d %02d:%02d:%02d GMT" % (weekdayDict[date.weekday()], date.day, monthDict[date.month], date.year, date.hour, date.minute, date.second)
 
+# def generateResponse(respDict):
+#     firstLine = respDict["Version"] + " " + respDict["Status-Code"] + " " + respDict["Status-Phrase"] + "\r\n"
+
+#     body = respDict.get("body", None)
+#     result = firstLine
+#     for key in respDict["headers"]:
+#         result += key + ": " + str(respDict["headers"][key]) + "\r\n"
+#     result += "\r\n"    
+#     if body:
+#         result = result.encode() + body
+#     else:
+#         result = result.encode()
+#     return result
+
+
 def generateResponse(respDict):
+    respDict["headers"]["Transfer-Encoding"] = "chunked"
+    if respDict["headers"].get("Content-Length"):
+        del respDict["headers"]["Content-Length"]
     firstLine = respDict["Version"] + " " + respDict["Status-Code"] + " " + respDict["Status-Phrase"] + "\r\n"
 
     body = respDict.get("body", None)
+    if body:
+        body = chunkGenerator(body)
     result = firstLine
     for key in respDict["headers"]:
         result += key + ": " + str(respDict["headers"][key]) + "\r\n"
@@ -115,6 +167,7 @@ def deleteData(path, isFile):
         shutil.rmtree(path, ignore_errors=True)
 
 
+# FOR TRANSFER ENCODING
 # def generateResponse(respDict):
 #     entityHeaders = ["Allow", "Content-Encoding", "Content-Language", "Content-Length", "Content-Location", 
 #                     "Content-MD5", "Content-Range", "Content-Type", "Expires", "Last-Modified"]
@@ -196,5 +249,67 @@ def writeAccessLog(reqDict, respDict, clientAddr, logFilePath):
         fd.write(log)
         fd.close()
     
-def removeExpiredCookies(globalCookies):
-    return globalCookies
+def removeExpiredCookies(globalCookiesDict):
+    expiredCookies = []
+    for key in globalCookiesDict.keys():
+        currentTime = math.floor(time.time())
+        if globalCookiesDict[key]["expireTime"] < currentTime:
+            expiredCookies.append(key)
+    
+    for key in expiredCookies:
+        del globalCookiesDict[key]
+
+    return globalCookiesDict
+
+def handleCookie(cookieHeader, clientAddr, method, globalCookieDict):
+    cookiesDict = parseCookies(cookieHeader)
+    cookie = cookiesDict.get(MY_COOKIE_NAME, None)
+    newCookie = None
+    if not cookie:
+        tmpStr = str(time.time()) + str(random.randint(10000, 99999)) 
+        newCookie = hashlib.md5(tmpStr.encode()).hexdigest()
+        globalCookieDict[newCookie] = {
+            "host": clientAddr,
+            "expireTime": math.floor(time.time()) + COOKIE_EXPIRE_TIME,
+            "tot_get_requests": 0,
+            "tot_head_requests": 0,
+            "tot_post_requests": 0,
+            "tot_put_requests": 0,
+            "tot_delete_requests": 0
+        }
+        globalCookieDict[newCookie]["tot_" + method.lower() + "_requests"] = 1
+
+    else:
+        # check for expire, check if available
+        globalCookieDict = removeExpiredCookies(globalCookieDict)
+        checkCookie = globalCookieDict.get(cookie, None)
+        if not checkCookie:
+            # set cookie
+            tmpStr = str(time.time()) + str(random.randint(10000, 99999)) 
+            newCookie = hashlib.md5(tmpStr.encode()).hexdigest()
+            globalCookieDict[newCookie] = {
+                "host": clientAddr,
+                "expireTime": math.floor(time.time()) + COOKIE_EXPIRE_TIME,
+                "tot_get_requests": 0,
+                "tot_head_requests": 0,
+                "tot_post_requests": 0,
+                "tot_put_requests": 0,
+                "tot_delete_requests": 0
+            }
+            globalCookieDict[newCookie]["tot_" + method.lower() + "_requests"] = 1
+        else:
+            globalCookieDict[cookie]["tot_" + method.lower() + "_requests"] += 1
+    
+    return newCookie, globalCookieDict
+
+def chunkGenerator(data):
+    arr = (data[0+i : 5+i] for i in range(0, len(data), 5))
+    result = b""
+    for chunk in arr:
+        result += b"%x\r\n" % len(chunk)
+        result += (chunk + b"\r\n")
+    result += b"0\r\n\r\n"
+    return result
+
+def generateBoundary():
+    return "3d6b6a416f9b5"

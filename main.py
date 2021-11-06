@@ -1,6 +1,9 @@
+from collections import defaultdict
+import json
 import socket
 from _thread import *
 from time import sleep, time
+from typing import DefaultDict
 import utility
 from datetime import datetime
 import httpMethods
@@ -9,15 +12,6 @@ from threading import Lock
 
 """
 Cookie, local time and gmt time, content-type
-
-Accept
-Accept-Charset
-Content-Type **
-Content-Location
-Location       TODO Use in POST request
-Set-Cookie
-Transfer-Encoding
-Connection Keep-Alive
 """
 
 # TODO handle absolute uri
@@ -36,6 +30,8 @@ EXPIRE_TIME = 86400
 MAX_KEEP_ALIVE_TIME = 10 # in seconds
 TOT_COUNT = 20
 ACCESS_LOG_PATH = DEFAULT_DIR_PATH + "log/access.log"
+COOKIE_EXPIRE_TIME = 60 #TODO
+MY_COOKIE_NAME = "MyHttpCookie"
 
 req_count = 0
 lock = Lock()
@@ -120,22 +116,26 @@ def parse_request(request):
 
     return {"isError" : False, "First-Line": reqLine, "headers" : header_dict, "uri" : req_uri, "method" : req_method, "Version" : http_version, "body" : body}
 
-    
-def sendResponse():
-    pass
-
 def buildResponse(reqDict):
+    global cookieDict
     method = reqDict.get("method")
     if method == "GET":
-        return httpMethods.get_or_head(reqDict, "GET", cookieDict)
+        response = httpMethods.get_or_head(reqDict, "GET")
     elif method == "HEAD":
-        return httpMethods.get_or_head(reqDict, "HEAD", cookieDict)
+        response = httpMethods.get_or_head(reqDict, "HEAD")
     elif method == "POST":
-        return httpMethods.post(reqDict, cookieDict)
+        return httpMethods.post(reqDict)
     elif method == "PUT":
-        return httpMethods.put(reqDict, cookieDict)
+        return httpMethods.put(reqDict)
     elif method == "DELETE":
-        return httpMethods.delete(reqDict, cookieDict)
+        return httpMethods.delete(reqDict)
+
+    lock.acquire()
+    newCookie, cookieDict = utility.handleCookie(reqDict["headers"].get("Cookie", {}), reqDict["Client-Address"], method, cookieDict)
+    if newCookie and not response["isError"]:
+        response["headers"]["Set-Cookie"] = MY_COOKIE_NAME + "=" + newCookie + ";" + " Max-Age=" + str(COOKIE_EXPIRE_TIME)
+    lock.release()
+    return response
 
 
 def receiveRequest(connection, clientAddr, timeout):
@@ -187,7 +187,6 @@ def new_thread(client_conn, client_addr, newSocket):
 
             #responseDict["headers"]["Set-Cookie"] = "yummy_cookie=choco"
             utility.writeAccessLog(reqDict, resp, client_addr, ACCESS_LOG_PATH)
-            print("sending")
             client_conn.send(utility.generateResponse(responseDict))
 
         else:
@@ -204,12 +203,11 @@ def new_thread(client_conn, client_addr, newSocket):
             else:
                 if response.get("body", None):
                     resp["body"] = response["body"]
-                    resp["headers"]["Content-Length"] = response["headers"]["Content-Length"]
+                    resp["headers"]["Content-Length"] = response["headers"].get("Content-Length", "0")
                 resp["headers"].update(response["headers"])
             
             #resp["headers"]["Set-Cookie"] = "yummy_cookie=choco"
             utility.writeAccessLog(reqDict, resp, client_addr, ACCESS_LOG_PATH)
-            print("sending")
             client_conn.send(utility.generateResponse(resp))
         if reqDict["headers"].get("Connection", "close") == "close":
             break
@@ -238,21 +236,33 @@ def generate_error_response(errorCode, errorPhrase, errorMsg):
     return resp
 
 def main():
+    global cookieDict
+    fd = open(DEFAULT_DIR_PATH + "cookies.json", "r")
+    cookieDict = json.load(fd)
+    fd.close()
+
     s_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_addr = ("localhost", SERVER_PORT)
     s_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s_socket.bind(server_addr)
     s_socket.listen(MAX_CONN)
 
+    cnt = 0
     while True:
+        if cnt == 3:
+            break
+        cnt+=1
         client_conn, client_addr = s_socket.accept()
         if(not isError(req_count, "req_too_long")):
             start_new_thread(new_thread, (client_conn, client_addr,s_socket))
         else:
             # temporarily server could not serve the request
             response = generate_error_response(503, "Service Unavailable")
-
-    listening_socket.close()
+    
+    fd = open(DEFAULT_DIR_PATH + "cookies.json", "w")
+    json.dump(cookieDict, fd, indent="\t")
+    fd.close()
+    s_socket.close()
 
 if __name__ == '__main__':
     main()
