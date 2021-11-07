@@ -7,26 +7,18 @@ import hashlib
 import time
 import os
 import json
-import shutil
-from _thread import *
-from threading import Lock
 import lzw3
 import zlib
-import random
-
-from requests_toolbelt import multipart
 import utility
 import brotli
 
-MAX_REQ = 50
-MAX_URI_LENGTH = 500
-MAX_HEADER_LENGTH = 500
+from _thread import *
+from threading import Lock
+from config import *
+
 TIME_DIFF = 19800
 SUPPORTED_METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD"]
-DEFAULT_DIR_PATH = "/home/suraj/Documents/study/TY/CN/Project/test/"
-EXPIRE_TIME = 10
 POST_FILE_PATH = "/home/suraj/Documents/study/TY/CN/Project/post.txt"
-SERVER_PORT = 7000
 MAX_DELETE_SIZE = 100
 
 
@@ -45,7 +37,6 @@ def get_or_head(reqDict, method):
         newPath = DEFAULT_DIR_PATH + "/windows" + urlparse(uri).path
         if os.path.isfile(newPath):
             path = newPath
-
 
     accept = headers.get("Accept", "*/*")
     fileExtension = utility.handleAcceptContentPriority(path, accept)
@@ -259,6 +250,12 @@ def post(reqDict):
 
     #TODO check order of decompress
     contentEncoding.split(",").reverse()
+
+    if('Content-MD5' in headers.keys()):
+        checksum = hashlib.md5(body.encode("ISO-8859-1")).hexdigest()
+        if(checksum != headers["Content-MD5"]):
+            return {"isError": True, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Checksum error." }
+
     # decompress payload data
     for enc in contentEncoding:
         enc = enc.strip()
@@ -308,12 +305,6 @@ def post(reqDict):
         if timeFromHeader < lastModifiedTime:
             return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
     
-    if('Content-MD5' in headers.keys()):
-        checksum = hashlib.md5(body).hexdigest()
-        if(checksum != headers["Content-MD5"]):
-            return {"isError": True, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Checksum error." }
-
-
     if "application/x-www-form-urlencoded" in contentType:
         postDataDict = parse_qs(body)
     elif "application/json" in contentType:
@@ -345,11 +336,15 @@ def post(reqDict):
             responseDict["Status-Code"] = "201"
             responseDict["Status-Phrase"] = "Resourse Created"
         elif contentType.strip() in ["text/html", "text/plain"]:
+            statusCode, statusPhrase = "204", "No Content"
+            if not os.path.exists(path):
+                statusCode = "201"
+                statusPhrase = "Resource Created"
             fd = open(path, "a")
             fd.write(body)
             fd.close()
-            responseDict["Status-Code"] = "204"
-            responseDict["Status-Phrase"] = "No Content"
+            responseDict["Status-Code"] = statusCode
+            responseDict["Status-Phrase"] = statusPhrase
         else:
             return {"isError": True, "Status-Code": 415, "Status-Phrase": "Unsupported Media Type", "Msg": "Could not support given media type." }
         

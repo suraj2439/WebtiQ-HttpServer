@@ -12,10 +12,7 @@ import os
 import time
 import math
 from datetime import datetime
-
-COOKIE_EXPIRE_TIME = 60 #TODO
-MY_COOKIE_NAME = "MyHttpCookie"
-
+from config import *
 
 def handleEncodingPriority(val):
     if val == "":
@@ -141,14 +138,16 @@ def toRFC_Date(date):
 
 
 def generateResponse(respDict):
-    respDict["headers"]["Transfer-Encoding"] = "chunked"
-    if respDict["headers"].get("Content-Length"):
+    if not respDict["isError"] and respDict["headers"].get("Content-Length"):
         del respDict["headers"]["Content-Length"]
     firstLine = respDict["Version"] + " " + respDict["Status-Code"] + " " + respDict["Status-Phrase"] + "\r\n"
 
     body = respDict.get("body", None)
-    if body:
+    if body and not respDict["isError"]:
         body = chunkGenerator(body)
+        respDict["headers"]["Transfer-Encoding"] = "chunked"
+    elif not respDict["headers"].get("Content-Length"):
+        respDict["headers"]["Content-Length"] = "0"
     result = firstLine
     for key in respDict["headers"]:
         result += key + ": " + str(respDict["headers"][key]) + "\r\n"
