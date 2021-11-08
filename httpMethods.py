@@ -1,6 +1,7 @@
 
 import gzip
 import mimetypes
+import sys
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime
 import hashlib
@@ -12,6 +13,7 @@ import zlib
 import utility
 import brotli
 
+from sys import maxsize
 from _thread import *
 from threading import Lock
 from config import *
@@ -20,7 +22,6 @@ TIME_DIFF = 19800
 SUPPORTED_METHODS = ["GET", "POST", "PUT", "DELETE", "HEAD"]
 POST_FILE_PATH = "/home/suraj/Documents/study/TY/CN/Project/post.txt"
 MAX_DELETE_SIZE = 100
-
 
 def get_or_head(reqDict, method):
     responseDict = {}
@@ -130,7 +131,7 @@ def get_or_head(reqDict, method):
                     dataAvailable = False
         
         if dataAvailable:
-            rangesList = headers["Range"].split('=')[1].split(',')
+            rangesList = utility.stripList(headers["Range"].split('=')[1].split(','))
             if len(rangesList) > 1:
                 for i in range (len(rangesList)):
                     r_range = rangesList[i]
@@ -140,7 +141,7 @@ def get_or_head(reqDict, method):
                     # range format = <value>-
                     elif r_range[-1] == "-":
                         startPos = r_range[:-1]
-                        endPos = None
+                        endPos = maxsize
                     # range format = <value>-<value>
                     else:
                         [startPos, endPos] = r_range.split("-")
@@ -182,7 +183,7 @@ def get_or_head(reqDict, method):
                 # range format = <value>-
                 elif r_range[-1] == "-":
                     startPos = r_range[:-1]
-                    endPos = None
+                    endPos = maxsize
                 # range format = <value>-<value>
                 else:
                     [startPos, endPos] = r_range.split("-")
@@ -263,8 +264,6 @@ def post(reqDict):
             body = body.decode()
         elif enc == "gzip":
             body = gzip.decompress(body)
-        elif enc == "compress":
-            body= lzw3.decompress(body)
         elif enc == "deflate":
             body = zlib.decompress(body)
         elif enc == "br":
@@ -272,17 +271,15 @@ def post(reqDict):
         #TODO handle not supporting encoding
 
     if not os.path.isfile(path):
+        doesfileExist = False
         # folder/hi.png
         if not os.access(path.rsplit("/", 1)[0], os.W_OK):
             return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to post at this location" }
-        else:
-            fd = open(path, "w")
     else:
+        doesfileExist = True
         if not os.access(path, os.W_OK):
             return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to post at this location" }
-        else:
-            fd = open(path, "a")
-        
+    
     ifMatch = headers.get('If-Match',"*")
     ifNoneMatch = headers.get('If-None-Match',"")
     
@@ -293,18 +290,20 @@ def post(reqDict):
     for i in range (len(ifNoneMatchArr)):
         ifNoneMatchArr[i] = ifNoneMatchArr[i].strip()
     
-    # generate ETag
-    ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
-    if "If-Match" in headers.keys():
-        if ETag not in ifMatchArr and ifMatchArr[0] != "*":
-            return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not match given ETag." }
-    elif "If-Unmodified-Since" in headers.keys():
-        date = datetime.strptime(headers["If-Unmodified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
-        timeFromHeader = time.mktime(date.timetuple())
-        lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
-        if timeFromHeader < lastModifiedTime:
-            return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
-    
+
+    if doesfileExist:
+        # generate ETag
+        ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
+        if "If-Match" in headers.keys():
+            if ETag not in ifMatchArr and ifMatchArr[0] != "*":
+                return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not match given ETag." }
+        elif "If-Unmodified-Since" in headers.keys():
+            date = datetime.strptime(headers["If-Unmodified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
+            timeFromHeader = time.mktime(date.timetuple())
+            lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
+            if timeFromHeader < lastModifiedTime:
+                return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
+        
     if "application/x-www-form-urlencoded" in contentType:
         postDataDict = parse_qs(body)
     elif "application/json" in contentType:
@@ -353,12 +352,15 @@ def post(reqDict):
         responseDict["headers"]["Content-Location"] = path.split(DEFAULT_DIR_PATH)[1]
         responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
         #TODO implement this header in testing code.
-        responseDict["headers"]["Location"] = "http://localhost:" + str(SERVER_PORT) + "/postSuccess.html"
+        if int(statusCode) == 303:
+            responseDict["headers"]["Location"] = "http://localhost:" + str(SERVER_PORT) + "/postSuccess.html"
         responseDict["headers"]["Content-Length"] = 0
         return responseDict
 
     #postFileDesc = open(POST_FILE_PATH, "a")
+    fd = open(path + "/StorePostData.json", "a")
     json.dump({utility.toRFC_Date(datetime.utcnow()): postDataDict}, fd, indent="\t")
+    fd.close()
 
     responseDict = {}
     responseDict["isError"] = False
@@ -401,20 +403,19 @@ def put(reqDict):
         elif enc == "br":
             body = brotli.decompress(body)
         #TODO handle not supporting encoding
+
     if not os.path.isfile(path):
+        doesFileExist = False
         statusCode = 201
         statusPhrase = "Resource Created"
         if not os.access(path.rsplit("/", 1)[0], os.W_OK):
             return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to post at this location" }
-        else:
-            fd = open(path, "w")
     else:
+        doesFileExist = True
         statusCode = 204
         statusPhrase = "No Content"
         if not os.access(path, os.W_OK):
             return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to post at this location" }
-        else:
-            fd = open(path, "w")
         
     ifMatch = headers.get('If-Match',"*")
     ifNoneMatch = headers.get('If-None-Match',"")
@@ -426,23 +427,23 @@ def put(reqDict):
     for i in range (len(ifNoneMatchArr)):
         ifNoneMatchArr[i] = ifNoneMatchArr[i].strip()
     
-    # generate ETag
-    ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
-    if "If-Match" in headers.keys():
-        if ETag not in ifMatchArr and ifMatchArr[0] != "*":
-            return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not match given ETag." }
-    elif "If-Unmodified-Since" in headers.keys():
-        date = datetime.strptime(headers["If-Unmodified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
-        timeFromHeader = time.mktime(date.timetuple())
-        lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
-        if timeFromHeader < lastModifiedTime:
-            return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
-    
+    if doesFileExist:
+        # generate ETag
+        ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
+        if "If-Match" in headers.keys():
+            if ETag not in ifMatchArr and ifMatchArr[0] != "*":
+                return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not match given ETag." }
+        elif "If-Unmodified-Since" in headers.keys():
+            date = datetime.strptime(headers["If-Unmodified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
+            timeFromHeader = time.mktime(date.timetuple())
+            lastModifiedTime = os.path.getmtime(path) - TIME_DIFF
+            if timeFromHeader < lastModifiedTime:
+                return {"isError": True, "Status-Code": 412, "Status-Phrase": "Precondition Failed", "Msg": "Could not meet If-Unmodified-Since header requirements." }
+        
     if('Content-MD5' in headers.keys()):
         checksum = hashlib.md5(body).hexdigest()
         if(checksum != headers["Content-MD5"]):
             return {"isError": True, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Checksum error." }
-
 
     if "application/x-www-form-urlencoded" in contentType:
         postDataDict = parse_qs(body)
@@ -491,6 +492,7 @@ def put(reqDict):
         return responseDict
 
     #postFileDesc = open(POST_FILE_PATH, "a")
+    fd = open(path, "w")
     json.dump({utility.toRFC_Date(datetime.utcnow()): postDataDict}, fd, indent="\t")
 
     responseDict = {}

@@ -33,85 +33,13 @@ Cookie, local time and gmt time, content-type
 
 TOT_COUNT = 20
 
-req_count = 0
+simultaneousConn = 0
 lock = Lock()
 
 # cookie : info
 cookieDict = {}
 
-def isError(data, errorType):
-    if(errorType == "max_simult_conn_exceed"):
-        if(data < MAX_REQ):
-            return False
-        return True
-    elif errorType == "uri_too_long":
-        if data < MAX_URI_LENGTH:
-            return False
-        return True
-    elif errorType == "method_not_implemented":
-        if(data in SUPPORTED_METHODS):
-            return False
-        return True
-    elif errorType == "header_too_long":
-        if(data < MAX_HEADER_LENGTH):
-            return False
-        return True
-    elif errorType == "version_not_supported":
-        http_version = data.split("/", 1)
-        if(len(http_version) == 2 and http_version[0] == "HTTP" and (http_version[1].lstrip())[0] == "1"):
-            return False
-        return True
-    elif errorType == "host_not_available":
-        if("Host" not in data):
-            return True
-        return False
 
-
-# seperate request header, body, method, uri, data etc...
-def parse_request(request):
-    # seperate header and body
-    request = request.split("\r\n\r\n", 1)
-    header = request[0]
-    body = ""
-    if(len(request) > 1):
-        body = request[1]
-
-    header_lines = header.split("\r\n")
-    reqLine = header_lines[0].strip()
-    first_line = header_lines[0].split()
-    if(len(first_line) != 3):
-        # TODO crosscheck error code
-        return {"isError": True, "method": "", "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "request format is not supported."}
-    
-    [req_method, req_uri, http_version] = first_line
-
-    if(isError(len(req_uri), "uri_too_long")):
-        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 414, "Status-Phrase": "URI Too Long", "Msg": "Requested uri is too long to handle to server."}
-    
-    if(isError(req_method, "method_not_implemented")):
-        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 405, "Status-Phrase": "Method Not Implemented", "Msg": "Requested method is not implemented at server side or server could not support requested method."}
-    
-    if(isError(http_version, "version_not_supported")):
-        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 505, "Status-Phrase": "HTTP Version Not Supported", "Msg": "HTTP Version Not Supported, either requested wrong version format or requested http version is not supported by server."}
-    
-    headers = header_lines[1:]
-    header_dict = {}
-    for single_header in headers:
-        single_header = single_header.split(":", 1)
-        if len(single_header) != 2:
-            # TODO cross check response code
-            return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Header format is incorrect."}
-        if(isError(len(single_header[1]), "header_too_long")):
-            return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 431, "Status-Phrase": "Request header fields too large", "Msg": "Requested header field is too large to handle to server."}
-        # TODO check for supported
-        single_header[0] = single_header[0].strip()
-        single_header[1] = single_header[1].strip()
-        
-        header_dict[single_header[0]] = single_header[1]
-    if(isError(header_dict, "host_not_available")):
-        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Header format is incorrect."}
-
-    return {"isError" : False, "method": req_method, "First-Line": reqLine, "headers" : header_dict, "uri" : req_uri, "method" : req_method, "Version" : http_version, "body" : body}
 
 def buildResponse(reqDict):
     global cookieDict
@@ -135,52 +63,24 @@ def buildResponse(reqDict):
     return response
 
 
-def receiveRequest(connection, clientAddr, timeout):
-    partialReq = b""
-    connection.settimeout(timeout)
-    count = 0
-    while True:
-        try:
-            partialReq += connection.recv(8096)
-            if count > TOT_COUNT:
-                connection.close()
-                return None
-            if(not partialReq):
-                sleep(timeout/TOT_COUNT)
-                count += 1
-        except Exception as e:
-            connection.close()
-            return None
-        if "\r\n\r\n".encode() in partialReq:
-            break
-    partialReqDict = parse_request(partialReq.decode("ISO-8859-1"))
-    if partialReqDict["isError"]:
-        return partialReq #headers
-    contentLength = int(partialReqDict["headers"].get("Content-Length", 0)) 
-    contentLength -= len(partialReq.split("\r\n\r\n".encode(), 1)[1])
-    body = b""
-
-    while len(body) < contentLength:
-        # TODO handle if not received
-        body += connection.recv(8096)
-    return (partialReq + body).strip()
-
-
 def new_thread(client_conn, client_addr, newSocket):
     print("new req")
-    while True:
+    global simultaneousConn
+    timeoutDuration = MAX_KEEP_ALIVE_TIME
+    maxReqCount = MAX_REQ_ON_PERSISTENT_CONN
+
+    while maxReqCount:
         req = b''
-        #TODO handle error
+        #TODO handle error, handle pipeliningf
         #req = recv_timeout(new_socket, client_conn)
-        req = receiveRequest(client_conn, client_addr, MAX_KEEP_ALIVE_TIME)
-        
+        req = utility.receiveSocketData(client_conn, timeoutDuration)
         if req == None:
             break
 
-        reqDict = parse_request(req.decode("ISO-8859-1"))
+        reqDict = utility.parse_request(req.decode("ISO-8859-1"))
         reqDict["Client-Address"] = client_addr
         if reqDict["isError"]:
-            content = generate_error_response(reqDict["Status-Code"], reqDict["Status-Phrase"], reqDict["Msg"])
+            content = utility.generate_error_response(reqDict["Status-Code"], reqDict["Status-Phrase"], reqDict["Msg"])
             responseDict = { "Version": "HTTP/1.1", "Status-Code": str(reqDict["Status-Code"]), "Status-Phrase": reqDict["Status-Phrase"], "isError": True,
                 "headers": {"Date": utility.toRFC_Date(datetime.utcnow()), "Server": utility.serverInfo(), "Connection": "close" , "Content-Length": str(len(content.encode())), "Content-Type": "text/html" }}
             if reqDict.get("method") and reqDict["method"] != "HEAD":
@@ -201,7 +101,7 @@ def new_thread(client_conn, client_addr, newSocket):
                 "headers": {"Date": utility.toRFC_Date(datetime.utcnow()), "Server": utility.serverInfo(), "Connection": "close"  }}
 
             if response["isError"]:
-                content = generate_error_response(response["Status-Code"], response["Status-Phrase"], response["Msg"])
+                content = utility.generate_error_response(response["Status-Code"], response["Status-Phrase"], response["Msg"])
                 resp["isError"] = True
                 resp["headers"]["Content-Length"] = str(len(content.encode()))
                 resp["headers"]["Content-Type"] = "text/html"
@@ -219,9 +119,25 @@ def new_thread(client_conn, client_addr, newSocket):
             utility.writeAccessLog(reqDict, resp, client_addr, ACCESS_LOG_PATH)
             print("sending")
             client_conn.send(utility.generateResponse(resp))
-        if reqDict.get("headers") and reqDict["headers"].get("Connection", "close") == "close":
+        if reqDict.get("headers"):
+            if reqDict["headers"].get("Connection", "close") == "close":
+                client_conn.close()
+                break
+            else:
+                keepAlive = reqDict["headers"].get("Keep-Alive")
+                # TODO what if client sends keep alive each time
+                if keepAlive:
+                    keepAliveArr = keepAlive.split(",")
+                    keepAliveArr = utility.stripList(keepAliveArr)
+                    timeoutDuration = int(keepAliveArr[0].split("=")[1].strip())
+                    maxReqCount = int(keepAliveArr[1].split("=")[1].strip())
+        else:
+            client_conn.close()
             break
+        maxReqCount -= 1
         # read from existing, make ds, write 
+    print("subtract")
+    simultaneousConn -= 1
 
     """
     httpVersion
@@ -231,26 +147,9 @@ def new_thread(client_conn, client_addr, newSocket):
     
     """
 
-
-def generate_error_response(errorCode, errorPhrase, errorMsg):
-    resp = """
-<!DOCTYPE html>
-<html>
-    <head>
-        <title>{} {}</title>
-    </head>
-    <body>
-        <h1>{}</h1>
-        <p1>{}</p>
-    </body>
-</html>
-
-    """.format(errorCode, errorPhrase, errorPhrase, errorMsg)
-    return resp
-
 def main():
-    global cookieDict
-    fd = open(DEFAULT_DIR_PATH + "cookies.json", "r")
+    global cookieDict, simultaneousConn
+    fd = open(DEFAULT_DIR_PATH + "/cookies.json", "r")
     cookieDict = json.load(fd)
     fd.close()
 
@@ -262,18 +161,22 @@ def main():
 
     cnt = 0
     while True:
-        if cnt == 30:
+        if cnt == 4000:
             break
         cnt+=1
         client_conn, client_addr = s_socket.accept()
-        if(not isError(req_count, "max_simult_conn_exceed")):
+        simultaneousConn += 1
+        print(simultaneousConn)
+        if(not utility.isError(simultaneousConn, "max_simult_conn_exceed")):
             start_new_thread(new_thread, (client_conn, client_addr,s_socket))
         else:
             # temporarily server could not serve the request
-            response = generate_error_response(503, "Service Unavailable")
+            response = utility.gen_503_response()
+            client_conn.send(response.encode("ISO-8859-1"))
+            client_conn.close()
             # TODO send response
     
-    fd = open(DEFAULT_DIR_PATH + "cookies.json", "w")
+    fd = open(DEFAULT_DIR_PATH + "/cookies.json", "w")
     json.dump(cookieDict, fd, indent="\t")
     fd.close()
     s_socket.close()

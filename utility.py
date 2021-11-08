@@ -6,7 +6,6 @@ import shutil
 from typing import Match
 import zlib
 import brotli
-import lzw3
 import mimetypes
 import os
 import time
@@ -14,13 +13,18 @@ import math
 from datetime import datetime
 from config import *
 
+def stripList(listObj):
+    for i in range (len(listObj)):
+        listObj[i] = listObj[i].strip()
+    return listObj
+
 def handleEncodingPriority(val):
     if val == "":
         return "identity"
-    availableEncodings = ["br","compress", "deflate", "gzip", "x-gzip"]
+    availableEncodings = ["br", "deflate", "gzip", "x-gzip"]
     processedEncodings = {}
 
-    accValues = val.split(",")
+    accValues = stripList(val.split(","))
     for value in accValues:
         tmpArr = value.split(";", 1)
         if(len(tmpArr) == 2):
@@ -39,10 +43,7 @@ def handleEncodingPriority(val):
         return result
     return None
 
-def stripList(listObj):
-    for i in range (len(listObj)):
-        listObj[i] = listObj[i].strip()
-    return listObj
+
 
 def getExtension(mimeType):
     return mimetypes.guess_all_extensions(mimeType)
@@ -197,8 +198,6 @@ def deleteData(path, isFile):
 def encodeData(data, encodeFormat):
     if encodeFormat == "gzip" or encodeFormat == "x-gzip":
         return gzip.compress(data)
-    elif encodeFormat == "compress":
-        return lzw3.compress(data)
     elif encodeFormat == "deflate":
         return zlib.compress(data)
     elif encodeFormat == "br":
@@ -302,7 +301,19 @@ def handleCookie(cookieHeader, clientAddr, method, globalCookieDict):
     return newCookie, globalCookieDict
 
 def chunkGenerator(data):
-    arr = (data[0+i : 5+i] for i in range(0, len(data), 5))
+    arr = []
+    #arr = (data[0+i : 5+i] for i in range(0, len(data), 5))
+    tot_len = len(data)
+    prev = 0
+    while(tot_len > 0):
+        val = random.randint(10,30)
+        if prev + val > len(data):
+            arr.append(data[prev :])
+        else:
+            arr.append(data[prev : prev + val])
+        prev = prev + val
+        tot_len -= val
+
     result = b""
     for chunk in arr:
         result += b"%x\r\n" % len(chunk)
@@ -310,5 +321,138 @@ def chunkGenerator(data):
     result += b"0\r\n\r\n"
     return result
 
+
+def isError(data, errorType):
+    if(errorType == "max_simult_conn_exceed"):
+        if(data < MAX_CONN):
+            return False
+        return True
+    elif errorType == "uri_too_long":
+        if data < MAX_URI_LENGTH:
+            return False
+        return True
+    elif errorType == "method_not_implemented":
+        if(data in SUPPORTED_METHODS):
+            return False
+        return True
+    elif errorType == "header_too_long":
+        if(data < MAX_HEADER_LENGTH):
+            return False
+        return True
+    elif errorType == "version_not_supported":
+        http_version = data.split("/", 1)
+        if(len(http_version) == 2 and http_version[0] == "HTTP" and (http_version[1].lstrip())[0] == "1"):
+            return False
+        return True
+    elif errorType == "host_not_available":
+        if("Host" not in data):
+            return True
+        return False
+
+
+
+# seperate request header, body, method, uri, data etc...
+def parse_request(request):
+    # seperate header and body
+    request = request.split("\r\n\r\n", 1)
+    header = request[0]
+    body = ""
+    if(len(request) > 1):
+        body = request[1]
+
+    header_lines = header.split("\r\n")
+    reqLine = header_lines[0].strip()
+    first_line = header_lines[0].split()
+    if(len(first_line) != 3):
+        # TODO crosscheck error code
+        return {"isError": True, "method": "", "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "request format is not supported."}
+    
+    [req_method, req_uri, http_version] = first_line
+
+    if(isError(len(req_uri), "uri_too_long")):
+        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 414, "Status-Phrase": "URI Too Long", "Msg": "Requested uri is too long to handle to server."}
+    
+    if(isError(req_method, "method_not_implemented")):
+        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 405, "Status-Phrase": "Method Not Implemented", "Msg": "Requested method is not implemented at server side or server could not support requested method."}
+    
+    if(isError(http_version, "version_not_supported")):
+        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 505, "Status-Phrase": "HTTP Version Not Supported", "Msg": "HTTP Version Not Supported, either requested wrong version format or requested http version is not supported by server."}
+    
+    headers = header_lines[1:]
+    header_dict = {}
+    for single_header in headers:
+        single_header = single_header.split(":", 1)
+        if len(single_header) != 2:
+            # TODO cross check response code
+            return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Header format is incorrect."}
+        if(isError(len(single_header[1]), "header_too_long")):
+            return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 431, "Status-Phrase": "Request header fields too large", "Msg": "Requested header field is too large to handle to server."}
+        # TODO check for supported
+        single_header[0] = single_header[0].strip()
+        single_header[1] = single_header[1].strip()
+        
+        header_dict[single_header[0]] = single_header[1]
+    if(isError(header_dict, "host_not_available")):
+        return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Header format is incorrect."}
+
+    return {"isError" : False, "method": req_method, "First-Line": reqLine, "headers" : header_dict, "uri" : req_uri, "method" : req_method, "Version" : http_version, "body" : body}
+
+
+def receiveSocketData(connection, timeout):
+    partialReq = b""
+    connection.settimeout(timeout)
+    count = 0
+    while True:
+        try:
+            partialReq += connection.recv(8096)
+            if count > TOT_COUNT:
+                connection.close()
+                return None
+            if(not partialReq):
+                time.sleep(timeout/TOT_COUNT)
+                count += 1
+        except Exception as e:
+            connection.close()
+            return None
+        if "\r\n\r\n".encode() in partialReq:
+            break
+    partialReqDict = parse_request(partialReq.decode("ISO-8859-1"))
+    if partialReqDict["isError"]:
+        return partialReq #headers
+    contentLength = int(partialReqDict["headers"].get("Content-Length", 0)) 
+    contentLength -= len(partialReq.split("\r\n\r\n".encode(), 1)[1])
+    body = b""
+
+    while len(body) < contentLength:
+        # TODO handle if not received
+        body += connection.recv(8096)
+    return (partialReq + body).strip()
+
+def generate_error_response(errorCode, errorPhrase, errorMsg):
+    resp = """
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>{} {}</title>
+    </head>
+    <body>
+        <h1>{}</h1>
+        <p1>{}</p>
+    </body>
+</html>
+
+    """.format(errorCode, errorPhrase, errorPhrase, errorMsg)
+    return resp
+
+def gen_503_response():
+    response =  "HTTP/1.1 503 Service Unavailable\r\nDate: Mon, 08 Nov 2021 20:10:35 GMT\r\nServer: MY-HTTP-SERVER/1.1\r\nConnection: close\r\nContent-Length: 195\r\nContent-Type: text/html\r\n\r\n"
+    response += generate_error_response(503, "Service Unavailable", "Server temporarily not available, please try again later.")
+    return response
+
+#print(chunkGenerator(b"SURAJYERKALLKJLKJLKJFDOIJWEOIJFLKJFLKJDLFKJSDL"))
+
+# TODO 
 def generateBoundary():
     return "3d6b6a416f9b5"
+
+
