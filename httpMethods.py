@@ -42,6 +42,7 @@ def get_or_head(reqDict, method):
     accept = headers.get("Accept", "*/*")
     fileExtension = utility.handleAcceptContentPriority(path, accept)
     acceptCharset = headers.get("Accept-Charset", "utf-8")
+    print(acceptCharset)
     responseCharset = utility.handleAcceptCharsetPriority(acceptCharset)
 
     acceptEncoding = headers.get("Accept-Encoding", "")

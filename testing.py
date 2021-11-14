@@ -283,16 +283,18 @@ def test16():
     try:
         print("First Request, expecting 'text' file , 'utf-8' charset and 'br' content encoding.")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"Accept": "text/html;q=0.6, text/plain;q=0.9", "Accept-Charset": "ISO-8859-1;q=0.6, utf-8;q=0.9", "Accept-Encoding": "gzip;q=0.6,br;q=0.9"})
-        # Values used in next test
-        global etagValue, lastModifiedValue
-        etagValue = response.headers.get("Etag", etagValue)
-        lastModifiedValue = response.headers.get("Last-Modified", lastModifiedValue)
         printRequestResponse(response)
         
         line()
 
         print("Second request, expecting 'html' file , 'ISO-8859-1' charset and content encoding '*'")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"Accept": "text/html;q=0.9,text/plain;q=0.6", "Accept-Charset": "ISO-8859-1;q=0.9, utf-8;q=0.6", "Accept-Encoding": "gzip;q=0.9, br;q=0.6, *;q=1"})
+        
+        # Values used in next test
+        global etagValue, lastModifiedValue
+        etagValue = response.headers.get("Etag", etagValue)
+        lastModifiedValue = response.headers.get("Last-Modified", lastModifiedValue)
+
         printRequestResponse(response)
     except Exception as e:
         print('Something unexpected occured!', e)
@@ -380,7 +382,7 @@ def test20():
         
         line()
 
-        print("First Request, expecting 412 Precondition Failed.")
+        print("Second Request, expecting 200 OK")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-None-Match": '"1111111111"' + "," + '"22222222222"'})
         printRequestResponse(response)
 
@@ -468,7 +470,7 @@ def test23():
 
 def test24():
     line()
-    print("Test24 - Target: HTTP version not supported(HTTP/2)")
+    print("Test24 - Target Header: Transfer-Encoding(chunked)")
     try:
         serverName = "127.0.0.1"
         serverPort = int(SERVER_PORT)
@@ -745,9 +747,6 @@ def test30():
         line()
         return
 
-
-test30()
-
-# for i in range (1,26):
-#     eval("test"+str(i)+"()")
+for i in range (25, 30):
+    eval("test"+str(i)+"()")
 

@@ -82,7 +82,7 @@ def handleAcceptCharsetPriority(acceptCharset):
     availableEncodings = ["utf-8", "ISO-8859-1"]
     processedEncodings = {}
 
-    accValues = acceptCharset.split(",")
+    accValues = stripList(acceptCharset.split(","))
     for value in accValues:
         tmpArr = value.split(";", 1)
         if(len(tmpArr) == 2):
@@ -95,7 +95,7 @@ def handleAcceptCharsetPriority(acceptCharset):
                     processedEncodings[enc] = priority
         elif tmpArr[0] in availableEncodings:
             processedEncodings[tmpArr[0]] = priority
-    
+
     result = max(processedEncodings, key = processedEncodings.get)
     if processedEncodings[result] > 0:
         return result

@@ -1,0 +1,30 @@
+#!/bin/bash
+
+cmd=$1
+
+if [[ $cmd == "start" ]]
+then
+	python3 main.py &
+	echo $! > .pid.txt
+	echo "server started"
+
+elif [[ $cmd == "stop" ]]
+then
+	FILE=.pid.txt
+	if [ -f "$FILE" ]; then
+    	pid=`cat .pid.txt`
+		kill $pid
+		rm .pid.txt
+		echo "Server stopped"
+	fi
+	
+
+elif [[ $cmd == "restart" ]]
+then
+	./server stop > /dev/null
+	./server start > /dev/null
+	echo "server restarted"
+else 
+  echo "Use 'server start/stop/restart'"
+fi
+

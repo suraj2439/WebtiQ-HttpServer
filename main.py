@@ -10,6 +10,18 @@ import httpMethods
 from requests_toolbelt.multipart import decoder
 from threading import Lock
 from config import *
+import signal
+
+
+
+def exit_handler():
+   fd = open("exitfile.txt", "w")
+   fd.write("exit program")
+   fd.close()
+
+
+signal.signal(signal.SIGINT, exit_handler)
+signal.signal(signal.SIGTERM, exit_handler)
 
 
 """
