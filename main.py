@@ -2,8 +2,6 @@ import json
 import os
 import socket
 from _thread import *
-from time import sleep, time
-from typing import DefaultDict
 import utility
 from datetime import datetime
 import httpMethods
@@ -22,31 +20,12 @@ def exit_handler(*args):
 signal.signal(signal.SIGINT, exit_handler)
 signal.signal(signal.SIGTERM, exit_handler)
 
-
-"""
-Cookie, local time and gmt time, content-type
-
- todos
- handle query ?
- relative path
-
- cannot find config or essential files, check for all imports(check for pip installs)
- wrong commandline arguments, could not open socket, terminal error messages, server busy,
- explain process(debug level), handle different try except(i/o exception, ) , 
- data not received completely(maybe socket problem, warn level), 
-"""
-
-# TODO handle absolute uri
-
 TOT_COUNT = 20
 
 simultaneousConn = 0
 lock = Lock()
 
-# cookie : info
 cookieDict = {}
-
-
 
 def buildResponse(reqDict):
     global cookieDict
@@ -122,7 +101,6 @@ def new_thread(client_conn, client_addr, newSocket):
                 
                 if reqDict["headers"].get("Connection", None):
                     resp["headers"]["Connection"] = reqDict["headers"]["Connection"]
-                #resp["headers"]["Set-Cookie"] = "yummy_cookie=choco"
                 utility.writeAccessLog(reqDict, resp, client_addr, ACCESS_LOG_PATH)
                 client_conn.send(utility.generateResponse(resp))
                 utility.writeErrorLog("debug", str(os.getpid()), "-",reqDict.get("First-Line") + " - response sent.")
@@ -141,19 +119,9 @@ def new_thread(client_conn, client_addr, newSocket):
                 client_conn.close()
                 break
             maxReqCount -= 1
-            # read from existing, make ds, write 
         simultaneousConn -= 1
     except:
         utility.writeErrorLog("warn", str(os.getpid()), "-", "internal server error.")
-
-
-    """
-    httpVersion
-    statuscode
-    phrase
-    response header dict
-    
-    """
 
 def main():
     global cookieDict, simultaneousConn

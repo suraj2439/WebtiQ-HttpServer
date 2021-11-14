@@ -1,7 +1,6 @@
 
 import gzip
 import mimetypes
-import sys
 from urllib.parse import parse_qs, urlparse
 from datetime import datetime
 import hashlib
@@ -15,7 +14,6 @@ import brotli
 
 from sys import maxsize
 from _thread import *
-from threading import Lock
 from config import *
 
 TIME_DIFF = 19800
@@ -99,7 +97,6 @@ def get_or_head(reqDict, method):
             statusCode = 304
             statusPhrase = "Not Modified"
             flag = False
-            #return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
     elif "If-Modified-Since" in headers.keys():
         date = datetime.strptime(headers["If-Modified-Since"] , "%a, %d %b %Y %H:%M:%S GMT")
         timeFromHeader = time.mktime(date.timetuple())
@@ -268,7 +265,6 @@ def post(reqDict):
 
     if not os.path.isfile(path):
         doesfileExist = False
-        # folder/hi.png
         if not os.access(path.rsplit("/", 1)[0], os.W_OK):
             return {"isError": True, "Status-Code": 403, "Status-Phrase": "Forbidden", "Msg": "Client donot have the permission to post at this location" }
     else:
@@ -305,21 +301,6 @@ def post(reqDict):
     elif "application/json" in contentType:
         postDataDict = json.loads(body)
     elif "multipart/form-data" in contentType:
-        boundary = contentType.rsplit("=", 1)[1].strip()
-        #print(body.split(boundary + "\r\n"))
-        multipartArr = body.split("--" + boundary+ "\r\n")[1:]
-        multipartArr[len(multipartArr)-1] = multipartArr[len(multipartArr)-1].rsplit("\r\n", 1)[0]
-        for part in multipartArr:
-            [headers, body] = part.split("\r\n\r\n")
-            contentType = "text"
-            if "\r\n" in headers:
-                [headers, contentType] = headers.rsplit("\r\n", 1)
-                contentType = contentType.split(":", 1)[1].strip()
-            headers = headers.split(";")
-            headers = utility.stripList(headers)
-
-            #print(headers, contentType)
-            
         return {"isError": True, "Status-Code": 415, "Status-Phrase": "Unsupported Media Type", "Msg": "Could not support given media type." }
         
     else:
@@ -352,7 +333,6 @@ def post(reqDict):
         responseDict["headers"]["Content-Length"] = 0
         return responseDict
 
-    #postFileDesc = open(POST_FILE_PATH, "a")
     fd = open(path + "/StorePostData.json", "a")
     json.dump({utility.toRFC_Date(datetime.utcnow()): postDataDict}, fd, indent="\t")
     fd.close()
@@ -444,20 +424,6 @@ def put(reqDict):
     elif "application/json" in contentType:
         postDataDict = json.loads(body)
     elif "multipart/form-data" in contentType:
-        boundary = contentType.rsplit("=", 1)[1].strip()
-        #print(body.split(boundary + "\r\n"))
-        multipartArr = body.split("--" + boundary+ "\r\n")[1:]
-        multipartArr[len(multipartArr)-1] = multipartArr[len(multipartArr)-1].rsplit("\r\n", 1)[0]
-        for part in multipartArr:
-            [headers, body] = part.split("\r\n\r\n")
-            contentType = "text"
-            if "\r\n" in headers:
-                [headers, contentType] = headers.rsplit("\r\n", 1)
-                contentType = contentType.split(":", 1)[1].strip()
-            headers = headers.split(";")
-            headers = utility.stripList(headers)
-
-            #print(headers, contentType)
             
         return {"isError": True, "Status-Code": 415, "Status-Phrase": "Unsupported Media Type", "Msg": "Could not support given media type." }
         
@@ -485,7 +451,6 @@ def put(reqDict):
         responseDict["headers"]["Content-Length"] = 0
         return responseDict
 
-    #postFileDesc = open(POST_FILE_PATH, "a")
     fd = open(path, "w")
     json.dump({utility.toRFC_Date(datetime.utcnow()): postDataDict}, fd, indent="\t")
 

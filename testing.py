@@ -1,18 +1,3 @@
-"""
-headers
-error codes
-logs testing
-cookies
-persistent connections
-http methods
-bad request
-multi threading
-multipart data
-max connections exceed 
-conditional request
-server start/stop
-"""
-
 from datetime import datetime
 from math import trunc
 import time
@@ -164,9 +149,6 @@ def test6():
         line()
         return 
 
-# for i in range (1, 7):
-#     eval("test" + str(i) + "()")
-
 def test7():
     line()
     print("Test7 - Target: 406 Not Acceptable(Server could not handle given Encoding 'exi'.)")
@@ -274,10 +256,6 @@ def test15():
     finally:
         line()
         return
-
-# for i in range (11,16):
-#     eval("test"+str(i)+"()")
-
 
 def test16():
     line()
@@ -730,28 +708,10 @@ def test29():
         return 
 
 
+
 def test30():
     line()
-    print("Test30 - Target: max simutaneous connections reached")
-    try:
-        count = 20
-        while count:
-            response = requests.get(SERVER_URL + "/bigSample.txt", headers={"Connection" : "close"})
-            print(response.status_code)
-            count -= 1
-        time.sleep(10)
-        response = requests.get(SERVER_URL + "/bigSample.txt", headers={"Connection" : "close"})
-        print(response.status_code)
-
-    except Exception as e:
-        print('Something unexpected occured!', e)
-    finally:
-        line()
-        return
-
-def test31():
-    line()
-    print("Test31 - Target: Media types. (image, audio, video, pdf)")
+    print("Test30 - Target: Media types. (image, audio, video, pdf)")
     try:
         response = requests.get(SERVER_URL + "/sample.png")
         fd = open("media-types/test.png", "wb")
@@ -785,21 +745,25 @@ def test31():
         line()
         return
 
-def test32():
-    line()
-    print("Test32 - Target: Expected 206 Not Acceptable(sending unsupported content encoding.)")
-    try:
-        response = requests.head(SERVER_URL + "/" , headers={"Accept-Encoding" : "unsupported,*;q=0"})
-        printRequestResponse(response, "HEAD")
-        
-    except Exception as e:
-        print('Something unexpected occured!', e)
-    finally:
-        line()
-        return
 
-for i in range (1, 33):
+# def test31():
+#     line()
+#     print("Test31 - Target: max simutaneous connections reached")
+#     try:
+#         count = 20
+#         while count:
+#             response = requests.get(SERVER_URL + "/bigSample.txt", headers={"Connection" : "close"})
+#             print(response.status_code)
+#             count -= 1
+#         time.sleep(10)
+#         response = requests.get(SERVER_URL + "/bigSample.txt", headers={"Connection" : "close"})
+#         print(response.status_code)
+
+#     except Exception as e:
+#         print('Something unexpected occured!', e)
+#     finally:
+#         line()
+#         return
+
+for i in range (1, 31):
     eval("test"+str(i)+"()")
-
-# test12()
-#media type not supported

@@ -4,7 +4,6 @@ import gzip
 import random
 import shutil
 import sys
-from typing import Match
 import zlib
 import brotli
 import mimetypes
@@ -128,21 +127,6 @@ def toRFC_Date(date):
     monthDict = { 1:"Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"} 
     return "%s, %02d %s %04d %02d:%02d:%02d GMT" % (weekdayDict[date.weekday()], date.day, monthDict[date.month], date.year, date.hour, date.minute, date.second)
 
-# def generateResponse(respDict):
-#     firstLine = respDict["Version"] + " " + respDict["Status-Code"] + " " + respDict["Status-Phrase"] + "\r\n"
-
-#     body = respDict.get("body", None)
-#     result = firstLine
-#     for key in respDict["headers"]:
-#         result += key + ": " + str(respDict["headers"][key]) + "\r\n"
-#     result += "\r\n"    
-#     if body:
-#         result = result.encode() + body
-#     else:
-#         result = result.encode()
-#     return result
-
-
 def generateResponse(respDict):
     if not respDict["isError"] and respDict["headers"].get("Content-Length"):
         del respDict["headers"]["Content-Length"]
@@ -170,34 +154,6 @@ def deleteData(path, isFile):
         os.remove(path)
     else:
         shutil.rmtree(path, ignore_errors=True)
-
-
-# FOR TRANSFER ENCODING
-# def generateResponse(respDict):
-#     entityHeaders = ["Allow", "Content-Encoding", "Content-Language", "Content-Length", "Content-Location", 
-#                     "Content-MD5", "Content-Range", "Content-Type", "Expires", "Last-Modified"]
-#     respDict["headers"]["Transfer-Encoding"] = "gzip"
-
-#     firstLine = respDict["Version"] + " " + respDict["Status-Code"] + " " + respDict["Status-Phrase"] + "\r\n"
-
-#     body = respDict.get("body", None)
-#     result = firstLine
-#     entityData = ""
-#     for key in respDict["headers"]:
-#         if key not in entityHeaders:
-#             result += key + ": " + str(respDict["headers"][key]) + "\r\n"
-#         else:
-#             entityData += key + ": " + str(respDict["headers"][key]) + "\r\n"
-#     entityData += "\r\n"
-#     #result += "\r\n"   
-    
-#     if body:
-#         entityData = entityData.encode() + body
-#     else:
-#         entityData = entityData.encode()
-#     entityData = gzip.compress(entityData)
-
-#     return result.encode() + entityData
 
 
 def encodeData(data, encodeFormat):
@@ -307,7 +263,6 @@ def handleCookie(cookieHeader, clientAddr, method, globalCookieDict):
 
 def chunkGenerator(data):
     arr = []
-    #arr = (data[0+i : 5+i] for i in range(0, len(data), 5))
     tot_len = len(data)
     prev = 0
     while(tot_len > 0):
@@ -353,7 +308,6 @@ def isError(data, errorType):
         if("Host" not in data):
             return True
         return False
-
 
 
 # seperate request header, body, method, uri, data etc...
