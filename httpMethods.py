@@ -32,7 +32,6 @@ def get_or_head(reqDict, method):
     if path == "/":
         path = "/index.html"
     path = DEFAULT_DIR_PATH + path
-
     userAgent = headers.get("User-Agent", "")
     if "Windows" in userAgent:
         newPath = DEFAULT_DIR_PATH + "/windows" + urlparse(uri).path
@@ -42,12 +41,10 @@ def get_or_head(reqDict, method):
     accept = headers.get("Accept", "*/*")
     fileExtension = utility.handleAcceptContentPriority(path, accept)
     acceptCharset = headers.get("Accept-Charset", "utf-8")
-    print(acceptCharset)
     responseCharset = utility.handleAcceptCharsetPriority(acceptCharset)
 
     acceptEncoding = headers.get("Accept-Encoding", "")
     contentEncoding = utility.handleEncodingPriority(acceptEncoding)
-    
     if contentEncoding == None:
         return {"isError": True, "Status-Code": 406, "Status-Phrase": "Not Acceptable", "Msg": "Error in content-encoding header field or server could not handle content-encoding header field." }
     
@@ -72,7 +69,6 @@ def get_or_head(reqDict, method):
             fileData = fd.read()
             fd.close()
 
-
     ifMatch = headers.get('If-Match',"*")
     ifNoneMatch = headers.get('If-None-Match',"")
     
@@ -83,7 +79,6 @@ def get_or_head(reqDict, method):
     for i in range (len(ifNoneMatchArr)):
         ifNoneMatchArr[i] = ifNoneMatchArr[i].strip()
     
-
     # generate ETag
     ETag = '"' + hashlib.md5((str(os.path.getmtime(path)).encode())).hexdigest() + '"'
     if "If-Match" in headers.keys():
@@ -114,7 +109,7 @@ def get_or_head(reqDict, method):
             statusPhrase = "Not Modified"
             flag = False
             return {"isError": True, "Status-Code": 304, "Status-Phrase": "Not Modified", "Msg": "Given resource is not modified." }
-            
+
     if flag and "Range" in headers.keys() and (headers["Range"].split("="))[0] == "bytes":
         dataAvailable = True
         # check for conditions on range header
@@ -211,7 +206,6 @@ def get_or_head(reqDict, method):
                         responseDict["body"] = body
                         responseDict["headers"]["Content-MD5"] = hashlib.md5(responseDict["body"]).hexdigest()
                     return responseDict
-
     responseDict["isError"] = False
     responseDict["Status-Code"] = str(statusCode)
     responseDict["Status-Phrase"] = statusPhrase
@@ -251,7 +245,6 @@ def post(reqDict):
     contentEncoding = headers.get("Content-Encoding", "")
     contentType = headers.get("Content-Type", "text/plain")
 
-    #TODO check order of decompress
     contentEncoding.split(",").reverse()
 
     if('Content-MD5' in headers.keys()):
@@ -270,7 +263,8 @@ def post(reqDict):
             body = zlib.decompress(body)
         elif enc == "br":
             body = brotli.decompress(body)
-        #TODO handle not supporting encoding
+        else:
+            return {"isError": True, "Status-Code": 406, "Status-Phrase": "Not Acceptable", "Msg": "Given Content encoding is not supported in server side." }
 
     if not os.path.isfile(path):
         doesfileExist = False
@@ -353,7 +347,6 @@ def post(reqDict):
         responseDict["headers"] = {}
         responseDict["headers"]["Content-Location"] = path.split(DEFAULT_DIR_PATH)[1]
         responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
-        #TODO implement this header in testing code.
         if int(statusCode) == 303:
             responseDict["headers"]["Location"] = "http://localhost:" + str(SERVER_PORT) + "/postSuccess.html"
         responseDict["headers"]["Content-Length"] = 0
@@ -370,7 +363,6 @@ def post(reqDict):
     responseDict["Status-Phrase"] = "See Other"
     responseDict["headers"] = {}
     responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
-    #TODO implement this header in testing code.
     responseDict["headers"]["Location"] = "http://localhost:" + str(SERVER_PORT) + "/postSuccess.html"
     responseDict["headers"]["Content-Length"] = 0
 
@@ -389,7 +381,6 @@ def put(reqDict):
     contentEncoding = headers.get("Content-Encoding", "")
     contentType = headers.get("Content-Type", "text/plain")
 
-    #TODO check order of decompress
     contentEncoding.split(",").reverse()
     # decompress payload data
     for enc in contentEncoding:
@@ -404,7 +395,8 @@ def put(reqDict):
             body = zlib.decompress(body)
         elif enc == "br":
             body = brotli.decompress(body)
-        #TODO handle not supporting encoding
+        else:
+            return {"isError": True, "Status-Code": 406, "Status-Phrase": "Not Acceptable", "Msg": "Given Content encoding is not supported in server side." }
 
     if not os.path.isfile(path):
         doesFileExist = False
@@ -503,7 +495,6 @@ def put(reqDict):
     responseDict["Status-Phrase"] = statusPhrase
     responseDict["headers"] = {}
     responseDict["headers"]["Expires"] = utility.toRFC_Date(datetime.fromtimestamp(int(time.time()) + EXPIRE_TIME))
-    #TODO implement this header in testing code.
     responseDict["headers"]["Content-Length"] = 0
 
     return responseDict

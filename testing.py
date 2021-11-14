@@ -18,6 +18,7 @@ from math import trunc
 import time
 from typing import Tuple
 from urllib.parse import urlparse
+from PIL.Image import Image
 import requests
 import socket
 from config import *
@@ -31,9 +32,10 @@ etagValue = '"900f23da801f61dab9dab7af2d2d1c30"'
 lastModifiedValue = "Mon, 08 Nov 2021 08:10:07 GMT"
 
 
-def printRequestResponse(response):
+def printRequestResponse(response, method):
     print("\nREQUEST")
-    print(response.request.url)
+    print("Method = " + method)
+    print("URL = " + response.request.url)
     reqHeaders = response.request.headers
     for header in reqHeaders.keys():
         print(header, ":", reqHeaders[header])
@@ -57,7 +59,7 @@ def test1():
     print("Test1 - Target: Uri Too Long Error")
     try:
         response = requests.head(SERVER_URL + "/" + "a"*501)
-        printRequestResponse(response)
+        printRequestResponse(response, "HEAD")
         
     except Exception as e:
         print('Something unexpected occured!', e)
@@ -70,7 +72,7 @@ def test2():
     print("Test2 - Target: 405 Method not implemented(options)")
     try:
         response = requests.options(SERVER_URL + "/")
-        printRequestResponse(response)
+        printRequestResponse(response, "OPTIONS")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -82,7 +84,7 @@ def test3():
     print("Test3 - 431 Target: Header too long(connection header)")
     try:
         response = requests.head(SERVER_URL + "/", headers={'Connection': 'error'*101 })
-        printRequestResponse(response)
+        printRequestResponse(response, "HEAD")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -170,7 +172,7 @@ def test7():
     print("Test7 - Target: 406 Not Acceptable(Server could not handle given Encoding 'exi'.)")
     try:
         response = requests.get(SERVER_URL + "/", headers={'Accept-Encoding': 'exi,*;q=0' })
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -182,7 +184,7 @@ def test8():
     print("Test8 - Target: 404 Not Found(File not found)")
     try:
         response = requests.get(SERVER_URL + "/NotFound.txt")
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -194,7 +196,7 @@ def test9():
     print("Test9 - Target: 403 Forbidden(File donot have read permission)")
     try:
         response = requests.get(SERVER_URL + "/ReadLock.txt")
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -206,7 +208,7 @@ def test10():
     print("Test10 - Target: 400 Bad Request(Checksum error- Content-MD5 header)")
     try:
         response = requests.post(SERVER_URL + "/ReadLock.txt", headers = {"Content-MD5" : "11111111"}, data=json.dumps({"KEY" : "VALUE"}))
-        printRequestResponse(response)
+        printRequestResponse(response, "POST")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -218,7 +220,7 @@ def test11():
     print("Test11 - Target: Simple GET request.")
     try:
         response = requests.get(SERVER_URL + "/")
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -230,7 +232,7 @@ def test12():
     print("Test12 - Target: Simple HEAD request.")
     try:
         response = requests.head(SERVER_URL + "/")
-        printRequestResponse(response)
+        printRequestResponse(response, "HEAD")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -242,7 +244,7 @@ def test13():
     print("Test13 - Target: Simple POST request.")
     try:
         response = requests.post(SERVER_URL + "/post/de.txt", data = "Sample post request data.".encode("ISO-8859-1"))
-        printRequestResponse(response)
+        printRequestResponse(response, "POST")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -254,7 +256,7 @@ def test14():
     print("Test14 - Target: Simple PUT request.")
     try:
         response = requests.put(SERVER_URL + "/put/def.txt", data = "Sample put request data.".encode("ISO-8859-1"))
-        printRequestResponse(response)
+        printRequestResponse(response, "PUT")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -266,7 +268,7 @@ def test15():
     print("Test15 - Target: Simple DELETE request.")
     try:
         response = requests.delete(SERVER_URL + "/delete/abc.txt")
-        printRequestResponse(response)
+        printRequestResponse(response, "DELETE")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -283,7 +285,7 @@ def test16():
     try:
         print("First Request, expecting 'text' file , 'utf-8' charset and 'br' content encoding.")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"Accept": "text/html;q=0.6, text/plain;q=0.9", "Accept-Charset": "ISO-8859-1;q=0.6, utf-8;q=0.9", "Accept-Encoding": "gzip;q=0.6,br;q=0.9"})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
         
         line()
 
@@ -295,7 +297,7 @@ def test16():
         etagValue = response.headers.get("Etag", etagValue)
         lastModifiedValue = response.headers.get("Last-Modified", lastModifiedValue)
 
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -311,13 +313,13 @@ def test17():
         date = datetime.strptime(lastModifiedValue , "%a, %d %b %Y %H:%M:%S GMT")
         lastModifiedTime = time.mktime(date.timetuple())
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Modified-Since": toRFC_Date(datetime.fromtimestamp(lastModifiedTime + 60))})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
         
         line()
 
         print("First Request, expecting 200 OK")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Modified-Since": toRFC_Date(datetime.fromtimestamp(lastModifiedTime - 60))})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
 
     except Exception as e:
         print('Something unexpected occured!', e)
@@ -333,13 +335,13 @@ def test18():
         date = datetime.strptime(lastModifiedValue , "%a, %d %b %Y %H:%M:%S GMT")
         lastModifiedTime = time.mktime(date.timetuple())
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Unmodified-Since": toRFC_Date(datetime.fromtimestamp(lastModifiedTime + 60))})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
         
         line()
 
         print("First Request, expecting 412 Precondition Failed.")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Unmodified-Since": toRFC_Date(datetime.fromtimestamp(lastModifiedTime - 60))})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
 
     except Exception as e:
         print('Something unexpected occured!', e)
@@ -356,13 +358,13 @@ def test19():
         date = datetime.strptime(lastModifiedValue , "%a, %d %b %Y %H:%M:%S GMT")
         lastModifiedTime = time.mktime(date.timetuple())
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Match": etagValue + "," + '"22222222222"'})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
         
         line()
 
         print("First Request, expecting 412 Precondition Failed.")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Match": "111111111" + "," + '"222222222"'})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
 
     except Exception as e:
         print('Something unexpected occured!', e)
@@ -378,13 +380,13 @@ def test20():
         date = datetime.strptime(lastModifiedValue , "%a, %d %b %Y %H:%M:%S GMT")
         lastModifiedTime = time.mktime(date.timetuple())
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-None-Match": etagValue + "," + '"22222222222"'})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
         
         line()
 
         print("Second Request, expecting 200 OK")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-None-Match": '"1111111111"' + "," + '"22222222222"'})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
 
     except Exception as e:
         print('Something unexpected occured!', e)
@@ -401,13 +403,13 @@ def test21():
         date = datetime.strptime(lastModifiedValue , "%a, %d %b %Y %H:%M:%S GMT")
         lastModifiedTime = time.mktime(date.timetuple())
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Range": etagValue, "Range": "bytes= -10, 20-30, 40-"})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
         
         line()
 
         print("First Request, expecting 200 OK")
         response = requests.get(SERVER_URL + "/accept.html", headers = {"If-Range": '"1111111111"', "Range": "bytes= -10, 20-30, 40-"})
-        printRequestResponse(response)
+        printRequestResponse(response, "GET")
 
     except Exception as e:
         print('Something unexpected occured!', e)
@@ -421,7 +423,7 @@ def test22():
     print("Test22 - Target: Headers - Content-Loction")
     try:
         response = requests.post(SERVER_URL + "/post/def.txt", data = "Sample post request data.".encode("ISO-8859-1"))
-        printRequestResponse(response)
+        printRequestResponse(response, "POST")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -460,7 +462,7 @@ def test23():
 
     try:
         response = requests.post(SERVER_URL + "/post/form1", headers={"Content-Type": "application/x-www-form-urlencoded"}, data = {"key1":"value1", "key2":"value2"})
-        printRequestResponse(response)
+        printRequestResponse(response, "POST")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -501,7 +503,7 @@ def test25():
     print("Test25 - Target: 'Allow' header")
     try:
         response = requests.options(SERVER_URL + "/")
-        printRequestResponse(response)
+        printRequestResponse(response, "OPTIONS")
     except Exception as e:
         print('Something unexpected occured!', e)
     finally:
@@ -514,7 +516,7 @@ def test26():
     print("Test26 - Headers: Cookie, Set-Cookie")
     try:
         response = requests.head(SERVER_URL + "/")
-        printRequestResponse(response)
+        printRequestResponse(response, "HEAD")
         receivedCookie = response.headers.get("Set-Cookie")
         if receivedCookie:
             print("Sending 2 HEAD and 2 GET request with cookie to verify if count of requests is increamented in cookie file.")
@@ -747,6 +749,57 @@ def test30():
         line()
         return
 
-for i in range (25, 30):
+def test31():
+    line()
+    print("Test31 - Target: Media types. (image, audio, video, pdf)")
+    try:
+        response = requests.get(SERVER_URL + "/sample.png")
+        fd = open("media-types/test.png", "wb")
+        fd.write(response.content)
+        fd.close()
+        print("Received image response")
+
+        response = requests.get(SERVER_URL + "/sample.mp3")
+        fd = open("media-types/audio.mp3", "wb")
+        fd.write(response.content)
+        fd.close()
+        print("Received audio response")
+
+        response = requests.get(SERVER_URL + "/sample.mp4")
+        fd = open("media-types/video.mp4", "wb")
+        fd.write(response.content)
+        fd.close()
+        print("Received video response")
+
+        response = requests.get(SERVER_URL + "/sample.pdf")
+        fd = open("media-types/test.pdf", "wb")
+        fd.write(response.content)
+        fd.close()
+        print("Received pdf response")
+
+        print("\nYou can view this files in 'media-types' folder in project directory.")
+
+    except Exception as e:
+        print('Something unexpected occured!', e)
+    finally:
+        line()
+        return
+
+def test32():
+    line()
+    print("Test32 - Target: Expected 206 Not Acceptable(sending unsupported content encoding.)")
+    try:
+        response = requests.head(SERVER_URL + "/" , headers={"Accept-Encoding" : "unsupported,*;q=0"})
+        printRequestResponse(response, "HEAD")
+        
+    except Exception as e:
+        print('Something unexpected occured!', e)
+    finally:
+        line()
+        return
+
+for i in range (1, 33):
     eval("test"+str(i)+"()")
 
+# test12()
+#media type not supported

@@ -26,21 +26,17 @@ signal.signal(signal.SIGTERM, exit_handler)
 """
 Cookie, local time and gmt time, content-type
 
- stop-start-restart commands;
- error logging
- testing code
  todos
  handle query ?
+ relative path
 
  cannot find config or essential files, check for all imports(check for pip installs)
  wrong commandline arguments, could not open socket, terminal error messages, server busy,
  explain process(debug level), handle different try except(i/o exception, ) , 
  data not received completely(maybe socket problem, warn level), 
-
 """
 
 # TODO handle absolute uri
-# TODO multipart/byteranges
 
 TOT_COUNT = 20
 
@@ -82,8 +78,6 @@ def new_thread(client_conn, client_addr, newSocket):
     try: 
         while maxReqCount:
             req = b''
-            #TODO handle error, handle pipeliningf
-            #req = recv_timeout(new_socket, client_conn)
             req = utility.receiveSocketData(client_conn, timeoutDuration)
             if req == None:
                 break
@@ -138,7 +132,6 @@ def new_thread(client_conn, client_addr, newSocket):
                     break
                 else:
                     keepAlive = reqDict["headers"].get("Keep-Alive")
-                    # TODO what if client sends keep alive each time
                     if keepAlive:
                         keepAliveArr = keepAlive.split(",")
                         keepAliveArr = utility.stripList(keepAliveArr)
@@ -190,7 +183,6 @@ def main():
             client_conn.send(response.encode("ISO-8859-1"))
             client_conn.close()
             utility.writeErrorLog("warn", str(os.getpid()), "-","max connection reached.")
-            # TODO send response
 
 if __name__ == '__main__':
     main()

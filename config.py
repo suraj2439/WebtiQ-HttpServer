@@ -17,7 +17,7 @@ EXPIRE_TIME = 86400
 MAX_KEEP_ALIVE_TIME = 3 # in seconds
 TOT_COUNT = 20
 ACCESS_LOG_PATH = DEFAULT_DIR_PATH + "log/access.log"
-COOKIE_EXPIRE_TIME = 60 #TODO
+COOKIE_EXPIRE_TIME = 60
 MY_COOKIE_NAME = "MyHttpCookie"
 MAX_REQ_ON_PERSISTENT_CONN = 100
 LOG_LEVEL = "all"
@@ -30,10 +30,11 @@ if "SERVER" in config.sections():
     MAX_HEADER_LENGTH = int(config["SERVER"]["MaxHeaderLength"])
     EXPIRE_TIME = int(config["SERVER"]["CacheExpireTime"])
     MAX_REQ_ON_PERSISTENT_CONN = int(config["SERVER"]["MaxReqOnPersistentConn"])
+    MAX_KEEP_ALIVE_TIME = int(config["SERVER"]["MaxKeepAliveTime"])
 
 if "COOKIE" in config.sections():
     MY_COOKIE_NAME = config["COOKIE"]["CookieName"]
-    MAX_KEEP_ALIVE_TIME = int(config["COOKIE"]["CookieExpireTime"])
+    COOKIE_EXPIRE_TIME = int(config["COOKIE"]["CookieExpireTime"])
 
 if "LOG" in config.sections():
     ACCESS_LOG_PATH = config["LOG"]["AccessLogPath"]

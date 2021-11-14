@@ -39,6 +39,8 @@ def handleEncodingPriority(val):
         elif tmpArr[0] in availableEncodings:
             processedEncodings[tmpArr[0]] = priority
     
+    if not len(processedEncodings):
+        return None
     result = max(processedEncodings, key = processedEncodings.get)
     if processedEncodings[result] > 0:
         return result
@@ -97,6 +99,8 @@ def handleAcceptCharsetPriority(acceptCharset):
         elif tmpArr[0] in availableEncodings:
             processedEncodings[tmpArr[0]] = priority
 
+    if not len(processedEncodings):
+        return None        
     result = max(processedEncodings, key = processedEncodings.get)
     if processedEncodings[result] > 0:
         return result
@@ -365,7 +369,6 @@ def parse_request(request):
     reqLine = header_lines[0].strip()
     first_line = header_lines[0].split()
     if(len(first_line) != 3):
-        # TODO crosscheck error code
         return {"isError": True, "method": "", "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "request format is not supported."}
     
     [req_method, req_uri, http_version] = first_line
@@ -384,11 +387,9 @@ def parse_request(request):
     for single_header in headers:
         single_header = single_header.split(":", 1)
         if len(single_header) != 2:
-            # TODO cross check response code
             return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 400, "Status-Phrase": "Bad Request", "Msg": "Header format is incorrect."}
         if(isError(len(single_header[1]), "header_too_long")):
             return {"isError": True, "method": req_method, "First-Line": reqLine, "Status-Code": 431, "Status-Phrase": "Request header fields too large", "Msg": "Requested header field is too large to handle to server."}
-        # TODO check for supported
         single_header[0] = single_header[0].strip()
         single_header[1] = single_header[1].strip()
         
@@ -426,8 +427,12 @@ def receiveSocketData(connection, timeout):
     body = b""
 
     while len(body) < contentLength:
-        # TODO handle if not received
-        body += connection.recv(8096)
+        try:
+            body += connection.recv(8096)
+        except Exception as e:
+            connection.close()
+            writeErrorLog("debug", str(os.getpid()), "-", "connection timeout.")
+            return None
     return (partialReq + body).strip()
 
 def generate_error_response(errorCode, errorPhrase, errorMsg):
@@ -451,12 +456,12 @@ def gen_503_response():
     response += generate_error_response(503, "Service Unavailable", "Server temporarily not available, please try again later.")
     return response
 
-#print(chunkGenerator(b"SURAJYERKALLKJLKJLKJFDOIJWEOIJFLKJFLKJDLFKJSDL"))
-
-# TODO 
 def generateBoundary():
-    return "3d6b6a416f9b5"
-
+    arr = "0123456789abcdef"
+    res = ""
+    for i in range(15):
+        res += arr[random.randint(0, 15)]
+    return res
 """
 ErrorLogFormat "[%t] [%l] [pid %P] %F: %E: [client %a] %M"
 
