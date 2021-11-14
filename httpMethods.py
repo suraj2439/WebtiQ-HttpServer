@@ -55,6 +55,7 @@ def get_or_head(reqDict, method):
         path = path.rsplit(".", 1)[0] + fileExtension
 
     if not os.path.isfile(path):
+        utility.writeErrorLog("debug", str(os.getpid()), "-", path + " : 404 Not Found")
         return {"isError": True, "Status-Code": 404, "Status-Phrase": "Not Found", "Msg": "Could not found requested resource." }
     else:
         if not os.access(path, os.R_OK):
@@ -564,6 +565,7 @@ def delete(reqDict):
             
     # path does not exist
     else:
+        utility.writeErrorLog("debug", str(os.getpid()), "-", path + " : 404 Not Found")
         return {"isError": True, "Status-Code": 404, "Status-Phrase": "Not Found", "Msg": "Could not found requested resource." }
 
     responseDict = {}

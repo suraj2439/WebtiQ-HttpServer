@@ -20,6 +20,7 @@ ACCESS_LOG_PATH = DEFAULT_DIR_PATH + "log/access.log"
 COOKIE_EXPIRE_TIME = 60 #TODO
 MY_COOKIE_NAME = "MyHttpCookie"
 MAX_REQ_ON_PERSISTENT_CONN = 100
+LOG_LEVEL = "all"
 
 if "SERVER" in config.sections():
     DEFAULT_DIR_PATH = config["SERVER"]["DocumentRoot"]
@@ -37,3 +38,4 @@ if "COOKIE" in config.sections():
 if "LOG" in config.sections():
     ACCESS_LOG_PATH = config["LOG"]["AccessLogPath"]
     ERROR_LOG_PATH = config["LOG"]["ErrorLogPath"]
+    LOG_LEVEL = config["LOG"]["LogLevel"]

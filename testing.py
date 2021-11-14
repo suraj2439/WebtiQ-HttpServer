@@ -730,7 +730,7 @@ def test29():
 
 def test30():
     line()
-    print("Test12 - Target: Simple HEAD request.")
+    print("Test30 - Target: max simutaneous connections reached")
     try:
         count = 20
         while count:

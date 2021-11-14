@@ -11,8 +11,9 @@ then
 elif [[ $cmd == "stop" ]]
 then
 	FILE=.pid.txt
-	if [ -f "$FILE" ]; then
-    	pid=`cat .pid.txt`
+	if [ -f "$FILE" ] 
+	then
+    		pid=`cat .pid.txt`
 		kill $pid
 		rm .pid.txt
 		echo "Server stopped"

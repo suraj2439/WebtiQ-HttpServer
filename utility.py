@@ -3,6 +3,7 @@ import platform
 import gzip
 import random
 import shutil
+import sys
 from typing import Match
 import zlib
 import brotli
@@ -413,6 +414,7 @@ def receiveSocketData(connection, timeout):
                 count += 1
         except Exception as e:
             connection.close()
+            writeErrorLog("debug", str(os.getpid()), "-", "connection timeout.")
             return None
         if "\r\n\r\n".encode() in partialReq:
             break
@@ -455,4 +457,26 @@ def gen_503_response():
 def generateBoundary():
     return "3d6b6a416f9b5"
 
+"""
+ErrorLogFormat "[%t] [%l] [pid %P] %F: %E: [client %a] %M"
+
+[%t]	timestamp for the message
+[%l]	level of the message
+[pid %p]	process pid
+%F	source code file and line
+%E	error status code and string
+%a	client IP address and string
+%M	the log message
+"""
+def writeErrorLog(logLevel, pid, clientIp, msg):
+    if LOG_LEVEL == logLevel or LOG_LEVEL == "all":
+        timestamp = logTime()
+        fd = open(ERROR_LOG_PATH, "a")
+        if clientIp != "-":
+            clientIp = clientIp[0] + ":" + str(clientIp[1])
+        errorLog = "[{}] [{}] [{}] [{}] [{}]\n".format(timestamp, logLevel, pid, clientIp , msg)
+        fd.write(errorLog)
+        fd.close()
+    if logLevel == "critical":
+        sys.exit(0)
 
