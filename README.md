@@ -1,4 +1,4 @@
-# HTTP-Server
+# WebtiQ : HTTP-Server
 
 ## Usage:
 1. git clone https://github.com/suraj2439/HTTP-Server.git
